@@ -50,7 +50,6 @@ namespace EInvoiceAPI.Controllers
         private readonly Serializer _serializer;
         private readonly Hasher _hasher;
 
-
         private readonly string DllLibPath = "eps2003csp11.dll";
 
         public Invoice(Serializer serializer, Hasher hasher)
@@ -72,96 +71,63 @@ namespace EInvoiceAPI.Controllers
 
         [HttpPost("[action]")]
         [Produces("application/json")]
-        //public async Task<IActionResult> SignInvoice([FromHeader] string CompanyCode, [FromHeader] string EnvironmentId, [FromBody] object body)
         public async Task<IActionResult> SignInvoice()
         {
-            StreamReader sr = new StreamReader(Request.Body);
-            string requestbody = await sr.ReadToEndAsync();
-            //string requestbody = body.ToString(); //await sr.ReadToEndAsync();
-            //var hashed = _hasher.Hash(requestbody);
+            string requestbody;
+            using (var sr = new StreamReader(Request.Body))
+            {
+                requestbody = await sr.ReadToEndAsync();
+            }
+
             object useXmltojson = TokenManager.GetSettings("UseXMLTOJSON");
             object runImpersonated = TokenManager.GetSettings("UseImpersonation");
 
-            if (useXmltojson is null)
-            {
-                UseXML = false;
-            }
-            else
-            {
-                UseXML = Convert.ToBoolean(useXmltojson);
-            }
+            UseXML = useXmltojson != null && Convert.ToBoolean(useXmltojson);
+            UseIMP = runImpersonated != null && Convert.ToBoolean(runImpersonated);
 
-            if (runImpersonated is null)
+            if (UseXML)
             {
-                UseIMP = false;
-            }
-            else
-            {
-                UseIMP = Convert.ToBoolean(runImpersonated);
-            }
-
-            if (UseXML == true)
-            {
-                //- Convert received XML to JSON - Start
-
                 XmlSerializer serializer = new XmlSerializer(typeof(document));
                 StringReader reader = new StringReader(requestbody);
                 object XmlInvoice = (document)serializer.Deserialize(reader);
 
                 if (((document)XmlInvoice).receiver.id == null)
                 {
-                    ((document)XmlInvoice).receiver.id = String.Empty;
+                    ((document)XmlInvoice).receiver.id = string.Empty;
                 }
 
-
-                //if (((document)XmlInvoice).documentType == "EI")
-                //{
-                //    serializer = new XmlSerializer(typeof(export_document));
-                //    reader = new StringReader(requestbody);
-                //    XmlInvoice = (export_document)serializer.Deserialize(reader);
-                //    if (((export_document)XmlInvoice).receiver.id == null)
-                //    {
-                //        ((export_document)XmlInvoice).receiver.id = String.Empty;
-                //    }
-                //}
-
-                requestbody = Newtonsoft.Json.JsonConvert.SerializeObject(XmlInvoice);
+                requestbody = JsonConvert.SerializeObject(XmlInvoice);
             }
-            //- Convert received XML to JSON - END
 
-            //var hashed = _hasher.Hash(requestbody);
-
-            JsonSerializerSettings? settings = new JsonSerializerSettings();
-            settings.FloatFormatHandling = FloatFormatHandling.String;
-            settings.FloatParseHandling = FloatParseHandling.Decimal;
-            settings.DateFormatHandling = DateFormatHandling.IsoDateFormat;
-            settings.DateParseHandling = DateParseHandling.None;
-            settings.Formatting = Newtonsoft.Json.Formatting.None;
+            var settings = new JsonSerializerSettings
+            {
+                FloatFormatHandling = FloatFormatHandling.String,
+                FloatParseHandling = FloatParseHandling.Decimal,
+                DateFormatHandling = DateFormatHandling.IsoDateFormat,
+                DateParseHandling = DateParseHandling.None,
+                Formatting = Formatting.None
+            };
 
             JObject? invoice = JsonConvert.DeserializeObject<JObject>(requestbody, settings);
-            //var issuer_id = invoice.SelectToken("documents[0].issuer.id").Value<string>();
-
             var serializedJson = _serializer.Serialize(invoice);
 
-            string docVer = invoice["documentTypeVersion"].ToString();
+            string docVer = invoice["documentTypeVersion"]?.ToString() ?? string.Empty;
 
             GetE_Sign(Request.Headers["CompanyCode"]);
             string signValue = (docVer.Equals("0.9") ? "ANY" : SignWithCms(Encoding.UTF8.GetBytes(serializedJson), UseIMP));
             if (signValue.StartsWith("Error:"))
             {
-                //return StatusCode(Convert.ToInt32(HttpStatusCode.BadRequest), signValue);
                 return StatusCode(SignError, signValue);
             }
 
-            JObject jobject = new JObject(new object[2]
-                {
-                    (object) new JProperty("signatureType", (object) "I"),
-                    (object) new JProperty("value",(object)signValue)
-                });
-            JArray jarray = new JArray();
-            jarray.Add((JToken)jobject);
-            invoice.Add("signatures", (JToken)jarray);
-            string signedInvoice = "{\"documents\":[" + ((object)invoice).ToString() + "]}";
+            JObject jobject = new JObject
+            {
+                { "signatureType", "I" },
+                { "value", signValue }
+            };
+            JArray jarray = new JArray { jobject };
+            invoice.Add("signatures", jarray);
+            string signedInvoice = "{\"documents\":[" + invoice.ToString() + "]}";
 
             return new ContentResult
             {
@@ -173,19 +139,17 @@ namespace EInvoiceAPI.Controllers
 
         private string SignWithCms(byte[] data, bool runImpersonated)
         {
-            string domainName = TokenManager.GetSettings("ImpDomain").ToString();
-            string userName = TokenManager.GetSettings("ImpUsername").ToString();
-            string password = TokenManager.GetSettings("ImpPassword").ToString();
+            string domainName = TokenManager.GetSettings("ImpDomain")?.ToString() ?? string.Empty;
+            string userName = TokenManager.GetSettings("ImpUsername")?.ToString() ?? string.Empty;
+            string password = TokenManager.GetSettings("ImpPassword")?.ToString() ?? string.Empty;
 
             const int logon32ProviderDefault = 0;
-            //This parameter causes LogonUser to create a primary token. 
             const int logon32LogonInteractive = 2;
 
-            // Call LogonUser to obtain a handle to an access token. 
             SafeAccessTokenHandle safeAccessTokenHandle;
             bool returnValue = LogonUser(userName, domainName, password, logon32LogonInteractive, logon32ProviderDefault, out safeAccessTokenHandle);
 
-            if (false == returnValue)
+            if (!returnValue)
             {
                 int ret = Marshal.GetLastWin32Error();
                 throw new System.ComponentModel.Win32Exception(ret);
@@ -195,7 +159,7 @@ namespace EInvoiceAPI.Controllers
             using (IPkcs11Library pkcs11Library = factories.Pkcs11LibraryFactory.LoadPkcs11Library(factories, DllLibPath, AppType.MultiThreaded))
             {
                 var slots = pkcs11Library.GetSlotList(SlotsType.WithTokenPresent);
-                ISlot? slot = pkcs11Library.GetSlotList(SlotsType.WithTokenPresent).AsQueryable().Single(slot => slot.GetTokenInfo().SerialNumber == TokenSerial);
+                ISlot? slot = slots.AsQueryable().SingleOrDefault(s => s.GetTokenInfo().SerialNumber == TokenSerial);
                 if (slot is null)
                 {
                     return "Error: No slots found";
@@ -206,12 +170,12 @@ namespace EInvoiceAPI.Controllers
                     {
                         session.Login(CKU.CKU_USER, Encoding.UTF8.GetBytes(TokenPin));
 
-                        var certificateSearchAttributes = new List<IObjectAttribute>()
-                            {
-                                session.Factories.ObjectAttributeFactory.Create(CKA.CKA_CLASS, CKO.CKO_CERTIFICATE),
-                                session.Factories.ObjectAttributeFactory.Create(CKA.CKA_TOKEN, true),
-                                session.Factories.ObjectAttributeFactory.Create(CKA.CKA_CERTIFICATE_TYPE, CKC.CKC_X_509)
-                            };
+                        var certificateSearchAttributes = new List<IObjectAttribute>
+                        {
+                            session.Factories.ObjectAttributeFactory.Create(CKA.CKA_CLASS, CKO.CKO_CERTIFICATE),
+                            session.Factories.ObjectAttributeFactory.Create(CKA.CKA_TOKEN, true),
+                            session.Factories.ObjectAttributeFactory.Create(CKA.CKA_CERTIFICATE_TYPE, CKC.CKC_X_509)
+                        };
 
                         IObjectHandle? certificate = session.FindAllObjects(certificateSearchAttributes).FirstOrDefault();
 
@@ -221,14 +185,12 @@ namespace EInvoiceAPI.Controllers
                         }
 
                         X509Certificate2 certForSigning = null;
-                        if (runImpersonated == true)
+                        if (runImpersonated)
                         {
                             WindowsIdentity.RunImpersonated(
                               safeAccessTokenHandle,
-                              // User action
                               () =>
                               {
-                                  string currentUser = WindowsIdentity.GetCurrent().Name;
                                   X509Store store = new X509Store(StoreName.My, StoreLocation.CurrentUser);
                                   store.Open(OpenFlags.MaxAllowed);
 
@@ -258,25 +220,22 @@ namespace EInvoiceAPI.Controllers
                             store.Close();
                         }
 
-                        //New Way Sign Begin/06.09.2023/
-                        var attributeValues = session.GetAttributeValue(certificate, new List<CKA>
-                            {
-                                CKA.CKA_VALUE
-                            });
-
-
+                        var attributeValues = session.GetAttributeValue(certificate, new List<CKA> { CKA.CKA_VALUE });
+                        if (attributeValues.Count == 0)
+                        {
+                            return "Error: Certificate value not found";
+                        }
                         certForSigning = new X509Certificate2(attributeValues[0].GetValueAsByteArray());
 
-                        certificateSearchAttributes = new List<IObjectAttribute>()
-                            {
-                                session.Factories.ObjectAttributeFactory.Create(CKA.CKA_CLASS, CKO.CKO_PRIVATE_KEY),
-                                session.Factories.ObjectAttributeFactory.Create(CKA.CKA_KEY_TYPE,CKK.CKK_RSA)
-                            };
+                        certificateSearchAttributes = new List<IObjectAttribute>
+                        {
+                            session.Factories.ObjectAttributeFactory.Create(CKA.CKA_CLASS, CKO.CKO_PRIVATE_KEY),
+                            session.Factories.ObjectAttributeFactory.Create(CKA.CKA_KEY_TYPE, CKK.CKK_RSA)
+                        };
 
                         IObjectHandle? privateKeyHandler = session.FindAllObjects(certificateSearchAttributes).LastOrDefault();
 
                         RSA privateKey = new TokenRSA(certForSigning, session, slot, privateKeyHandler);
-                        //New Way Sign End/06.09.2023/
 
                         if (certForSigning is null)
                         {
@@ -285,9 +244,11 @@ namespace EInvoiceAPI.Controllers
 
                         ContentInfo content = new ContentInfo(new Oid("1.2.840.113549.1.7.5"), data);
                         SignedCms cms = new SignedCms(content, true);
-                        EssCertIDv2 bouncyCertificate = new EssCertIDv2(new Org.BouncyCastle.Asn1.X509.AlgorithmIdentifier(new DerObjectIdentifier("1.2.840.113549.1.9.16.2.47")), _hasher.HashBytes(certForSigning.RawData));
+                        EssCertIDv2 bouncyCertificate = new EssCertIDv2(
+                            new Org.BouncyCastle.Asn1.X509.AlgorithmIdentifier(new DerObjectIdentifier("1.2.840.113549.1.9.16.2.47")),
+                            _hasher.HashBytes(certForSigning.RawData));
 
-                        SigningCertificateV2 signerCertificateV2 = new SigningCertificateV2(new EssCertIDv2[] { bouncyCertificate });
+                        SigningCertificateV2 signerCertificateV2 = new SigningCertificateV2(new[] { bouncyCertificate });
                         CmsSigner signer = new CmsSigner(certForSigning)
                         {
                             PrivateKey = privateKey,
