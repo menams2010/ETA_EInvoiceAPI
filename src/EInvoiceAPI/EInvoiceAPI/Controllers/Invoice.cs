@@ -51,6 +51,8 @@ namespace EInvoiceAPI.Controllers
         private readonly Hasher _hasher;
 
         private readonly string DllLibPath = "eps2003csp11.dll";
+        private static readonly Dictionary<string, object> SlotLocks = new();
+        private static readonly object SlotLocksDictLock = new();
 
         public Invoice(Serializer serializer, Hasher hasher)
         {
@@ -137,6 +139,19 @@ namespace EInvoiceAPI.Controllers
             };
         }
 
+        private object GetSlotLock(string slotSerial)
+        {
+            lock (SlotLocksDictLock)
+            {
+                if (!SlotLocks.TryGetValue(slotSerial, out var slotLock))
+                {
+                    slotLock = new object();
+                    SlotLocks[slotSerial] = slotLock;
+                }
+                return slotLock;
+            }
+        }
+
         private string SignWithCms(byte[] data, bool runImpersonated)
         {
             string domainName = TokenManager.GetSettings("ImpDomain")?.ToString() ?? string.Empty;
@@ -166,116 +181,124 @@ namespace EInvoiceAPI.Controllers
                 }
                 using (var session = slot.OpenSession(SessionType.ReadWrite))
                 {
-                    try
+                    var slotLock = GetSlotLock(TokenSerial);
+                    lock (slotLock)
                     {
-                        session.Login(CKU.CKU_USER, Encoding.UTF8.GetBytes(TokenPin));
-
-                        var certificateSearchAttributes = new List<IObjectAttribute>
+                        try
                         {
-                            session.Factories.ObjectAttributeFactory.Create(CKA.CKA_CLASS, CKO.CKO_CERTIFICATE),
-                            session.Factories.ObjectAttributeFactory.Create(CKA.CKA_TOKEN, true),
-                            session.Factories.ObjectAttributeFactory.Create(CKA.CKA_CERTIFICATE_TYPE, CKC.CKC_X_509)
-                        };
+                            session.Login(CKU.CKU_USER, Encoding.UTF8.GetBytes(TokenPin));
 
-                        IObjectHandle? certificate = session.FindAllObjects(certificateSearchAttributes).FirstOrDefault();
-
-                        if (certificate is null)
-                        {
-                            return "Error: Certificate not found in token";
-                        }
-
-                        X509Certificate2 certForSigning = null;
-                        if (runImpersonated)
-                        {
-                            WindowsIdentity.RunImpersonated(
-                              safeAccessTokenHandle,
-                              () =>
-                              {
-                                  X509Store store = new X509Store(StoreName.My, StoreLocation.CurrentUser);
-                                  store.Open(OpenFlags.MaxAllowed);
-
-                                  foreach (X509Certificate2 cert in store.Certificates)
-                                  {
-                                      if (cert.SerialNumber == CertSerialNum)
-                                      {
-                                          certForSigning = cert;
-                                      }
-                                  }
-                                  store.Close();
-                              }
-                            );
-                        }
-                        else
-                        {
-                            X509Store store = new X509Store(StoreName.My, StoreLocation.CurrentUser);
-                            store.Open(OpenFlags.MaxAllowed);
-
-                            foreach (X509Certificate2 cert in store.Certificates)
+                            var certificateSearchAttributes = new List<IObjectAttribute>
                             {
-                                if (cert.SerialNumber == CertSerialNum)
-                                {
-                                    certForSigning = cert;
-                                }
+                                session.Factories.ObjectAttributeFactory.Create(CKA.CKA_CLASS, CKO.CKO_CERTIFICATE),
+                                session.Factories.ObjectAttributeFactory.Create(CKA.CKA_TOKEN, true),
+                                session.Factories.ObjectAttributeFactory.Create(CKA.CKA_CERTIFICATE_TYPE, CKC.CKC_X_509)
+                            };
+
+                            IObjectHandle? certificate = session.FindAllObjects(certificateSearchAttributes).FirstOrDefault();
+
+                            if (certificate is null)
+                            {
+                                return "Error: Certificate not found in token";
                             }
-                            store.Close();
+
+                            X509Certificate2 certForSigning = null;
+                            if (runImpersonated)
+                            {
+                                WindowsIdentity.RunImpersonated(
+                                  safeAccessTokenHandle,
+                                  () =>
+                                  {
+                                      X509Store store = new X509Store(StoreName.My, StoreLocation.CurrentUser);
+                                      store.Open(OpenFlags.MaxAllowed);
+
+                                      foreach (X509Certificate2 cert in store.Certificates)
+                                      {
+                                          if (cert.SerialNumber == CertSerialNum)
+                                          {
+                                              certForSigning = cert;
+                                          }
+                                      }
+                                      store.Close();
+                                  }
+                                );
+                            }
+                            else
+                            {
+                                X509Store store = new X509Store(StoreName.My, StoreLocation.CurrentUser);
+                                store.Open(OpenFlags.MaxAllowed);
+
+                                foreach (X509Certificate2 cert in store.Certificates)
+                                {
+                                    if (cert.SerialNumber == CertSerialNum)
+                                    {
+                                        certForSigning = cert;
+                                    }
+                                }
+                                store.Close();
+                            }
+
+                            var attributeValues = session.GetAttributeValue(certificate, new List<CKA> { CKA.CKA_VALUE });
+                            if (attributeValues.Count == 0)
+                            {
+                                return "Error: Certificate value not found";
+                            }
+                            certForSigning = new X509Certificate2(attributeValues[0].GetValueAsByteArray());
+
+                            certificateSearchAttributes = new List<IObjectAttribute>
+                            {
+                                session.Factories.ObjectAttributeFactory.Create(CKA.CKA_CLASS, CKO.CKO_PRIVATE_KEY),
+                                session.Factories.ObjectAttributeFactory.Create(CKA.CKA_KEY_TYPE, CKK.CKK_RSA)
+                            };
+
+                            IObjectHandle? privateKeyHandler = session.FindAllObjects(certificateSearchAttributes).LastOrDefault();
+
+                            RSA privateKey = new TokenRSA(certForSigning, session, slot, privateKeyHandler);
+
+                            if (certForSigning is null)
+                            {
+                                return "Error: Certificate not found in user certificates store";
+                            }
+
+                            ContentInfo content = new ContentInfo(new Oid("1.2.840.113549.1.7.5"), data);
+                            SignedCms cms = new SignedCms(content, true);
+                            EssCertIDv2 bouncyCertificate = new EssCertIDv2(
+                                new Org.BouncyCastle.Asn1.X509.AlgorithmIdentifier(new DerObjectIdentifier("1.2.840.113549.1.9.16.2.47")),
+                                _hasher.HashBytes(certForSigning.RawData));
+
+                            SigningCertificateV2 signerCertificateV2 = new SigningCertificateV2(new[] { bouncyCertificate });
+                            CmsSigner signer = new CmsSigner(certForSigning)
+                            {
+                                PrivateKey = privateKey,
+                                IncludeOption = X509IncludeOption.EndCertOnly,
+                                DigestAlgorithm = new Oid("2.16.840.1.101.3.4.2.1")
+                            };
+
+                            signer.SignedAttributes.Add(new Pkcs9SigningTime(DateTime.UtcNow));
+                            signer.SignedAttributes.Add(new AsnEncodedData(new Oid("1.2.840.113549.1.9.16.2.47"), signerCertificateV2.GetEncoded()));
+
+                            cms.ComputeSignature(signer);
+                            var output = cms.Encode();
+
+                            return Convert.ToBase64String(output);
                         }
-
-                        var attributeValues = session.GetAttributeValue(certificate, new List<CKA> { CKA.CKA_VALUE });
-                        if (attributeValues.Count == 0)
+                        catch (Exception ex)
                         {
-                            return "Error: Certificate value not found";
+                            return "Error: Signing Error \r\n" + ex.Message + "\r\n" + ex.InnerException?.Message;
                         }
-                        certForSigning = new X509Certificate2(attributeValues[0].GetValueAsByteArray());
-
-                        certificateSearchAttributes = new List<IObjectAttribute>
+                        finally
                         {
-                            session.Factories.ObjectAttributeFactory.Create(CKA.CKA_CLASS, CKO.CKO_PRIVATE_KEY),
-                            session.Factories.ObjectAttributeFactory.Create(CKA.CKA_KEY_TYPE, CKK.CKK_RSA)
-                        };
-
-                        IObjectHandle? privateKeyHandler = session.FindAllObjects(certificateSearchAttributes).LastOrDefault();
-
-                        RSA privateKey = new TokenRSA(certForSigning, session, slot, privateKeyHandler);
-
-                        if (certForSigning is null)
-                        {
-                            return "Error: Certificate not found in user certificates store";
+                            try
+                            {
+                                session.Logout();
+                                slot.CloseSession(session);
+                            }
+                            catch { /* Ignore logout errors */ }
                         }
-
-                        ContentInfo content = new ContentInfo(new Oid("1.2.840.113549.1.7.5"), data);
-                        SignedCms cms = new SignedCms(content, true);
-                        EssCertIDv2 bouncyCertificate = new EssCertIDv2(
-                            new Org.BouncyCastle.Asn1.X509.AlgorithmIdentifier(new DerObjectIdentifier("1.2.840.113549.1.9.16.2.47")),
-                            _hasher.HashBytes(certForSigning.RawData));
-
-                        SigningCertificateV2 signerCertificateV2 = new SigningCertificateV2(new[] { bouncyCertificate });
-                        CmsSigner signer = new CmsSigner(certForSigning)
-                        {
-                            PrivateKey = privateKey,
-                            IncludeOption = X509IncludeOption.EndCertOnly,
-                            DigestAlgorithm = new Oid("2.16.840.1.101.3.4.2.1")
-                        };
-
-                        signer.SignedAttributes.Add(new Pkcs9SigningTime(DateTime.UtcNow));
-                        signer.SignedAttributes.Add(new AsnEncodedData(new Oid("1.2.840.113549.1.9.16.2.47"), signerCertificateV2.GetEncoded()));
-
-                        cms.ComputeSignature(signer);
-                        var output = cms.Encode();
-
-                        return Convert.ToBase64String(output);
-
-                    }
-                    catch (Exception ex)
-                    {
-                        return "Error: Signing Error \r\n" + ex.Message + "\r\n" + ex.InnerException?.Message;
-                    }
-                    finally
-                    {
-                        session.Logout();
-                        slot.CloseSession(session);
                     }
                 }
             }
         }
+
     }
 }
