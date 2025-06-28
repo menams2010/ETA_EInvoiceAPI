@@ -1,5 +1,7 @@
+using System;
 using System.Collections.Generic;
 using System.Security.Cryptography.X509Certificates;
+using EInvoiceAPI; // For TokenManager
 
 namespace EInvoiceAPI.Services
 {
@@ -12,8 +14,17 @@ namespace EInvoiceAPI.Services
         {
             lock (_lock)
             {
+                // Check last refresh from db
+                var lastRefresh = TokenManager.GetCacheLastRefresh();
+                if (!lastRefresh.HasValue || (DateTime.UtcNow - lastRefresh.Value).TotalDays >= 1)
+                {
+                    _certCache.Clear();
+                    TokenManager.SetCacheLastRefresh(DateTime.UtcNow);
+                }
+
                 if (_certCache.TryGetValue(certSerialNum, out var cert))
                 {
+                    // Check certificate expiration date
                     if (cert != null && DateTime.UtcNow > cert.NotAfter.ToUniversalTime())
                     {
                         _certCache.Remove(certSerialNum);

@@ -25,6 +25,7 @@ namespace EInvoiceAPI
 
             return settingValue;
         }
+
         public static void SaveSettings(string settingName, object settingValue)
         {
             SQLiteConnection sqliteConn = CreateConnection();
@@ -41,6 +42,31 @@ namespace EInvoiceAPI
             {
                 sqliteConn.Close();
             }
+        }
+
+        public static DateTime? GetCacheLastRefresh()
+        {
+            var value = GetSettings("CertCacheLastRefresh");
+            if (value != null && DateTime.TryParse(value.ToString(), out var dt))
+                return dt;
+            return null;
+        }
+
+        public static void SetCacheLastRefresh(DateTime dt)
+        {
+            // Try update first, if not exists, insert
+            SQLiteConnection sqliteConn = CreateConnection();
+            SQLiteCommand cmd = new SQLiteCommand(sqliteConn);
+            cmd.CommandText = @"UPDATE [tb_Settings] SET [SettingValue]=@val WHERE [SettingName]='CertCacheLastRefresh';";
+            cmd.Parameters.AddWithValue("@val", dt.ToString("yyyy-MM-dd HH:mm:ss"));
+            int rows = cmd.ExecuteNonQuery();
+            if (rows == 0)
+            {
+                cmd.CommandText = @"INSERT INTO [tb_Settings] ([SettingName],[SettingValue]) VALUES ('CertCacheLastRefresh',@val);";
+                cmd.ExecuteNonQuery();
+            }
+            if (sqliteConn.State == System.Data.ConnectionState.Open)
+                sqliteConn.Close();
         }
 
         public static DataTable getE_Signing(string companyCode)
@@ -164,6 +190,7 @@ INSERT INTO [tb_Settings] ([Id],[SettingName],[SettingValue]) VALUES (3,'ImpDoma
 INSERT INTO [tb_Settings] ([Id],[SettingName],[SettingValue]) VALUES (4,'ImpUsername',NULL);
 INSERT INTO [tb_Settings] ([Id],[SettingName],[SettingValue]) VALUES (5,'ImpPassword',NULL);
 INSERT INTO [tb_Settings] ([Id],[SettingName],[SettingValue]) VALUES (6,'DateTimeFormat','dd/MM/yyyy hh:mm:ss tt');
+INSERT INTO [tb_Settings] ([Id],[SettingName],[SettingValue]) VALUES (7,'CertCacheLastRefresh',NULL);
 CREATE VIEW V_Data as  
 Select CompanyCode,CompanyName,TokenSerial,TokenPin,CertSerialNum,EnvId,EnvName,EnvTokenUrl,EnvInvoicingUrl,ClientId,ClientSecret,str_token,time_get,UseXMLTOJSON
  From tb_company 
