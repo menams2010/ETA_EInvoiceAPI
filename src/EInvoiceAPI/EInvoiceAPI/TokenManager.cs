@@ -173,8 +173,7 @@ INSERT INTO [tb_Settings] ([Id],[SettingName],[SettingValue]) VALUES (1,'UseImpe
 INSERT INTO [tb_Settings] ([Id],[SettingName],[SettingValue]) VALUES (2,'ImpDomain',NULL);
 INSERT INTO [tb_Settings] ([Id],[SettingName],[SettingValue]) VALUES (3,'ImpUsername',NULL);
 INSERT INTO [tb_Settings] ([Id],[SettingName],[SettingValue]) VALUES (4,'ImpPassword',NULL);
-INSERT INTO [tb_Settings] ([Id],[SettingName],[SettingValue]) VALUES (5,'UseXMLTOJSON','false');
-INSERT INTO [tb_Settings] ([Id],[SettingName],[SettingValue]) VALUES (6,'DateTimeFormat','dd/MM/yyyy hh:mm:ss tt');
+INSERT INTO [tb_Settings] ([Id],[SettingName],[SettingValue]) VALUES (5,'DateTimeFormat','dd/MM/yyyy hh:mm:ss tt');
 
 CREATE VIEW V_Data as  
 Select CompanyCode,CompanyName,TokenSerial,TokenPin,CertSerialNum,EnvId,EnvName,EnvTokenUrl,EnvInvoicingUrl,ClientId,ClientSecret,str_token,time_get 

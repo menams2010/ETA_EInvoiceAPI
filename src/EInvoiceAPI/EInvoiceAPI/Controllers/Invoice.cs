@@ -38,7 +38,7 @@ namespace EInvoiceAPI.Controllers
         private string? CertSerialNum;
         private string? ClientId;
         private string? ClientSecret;
-        private bool UseXML;
+        private bool UseXML = false;
         private bool UseIMP;
         string sysUIFormat = CultureInfo.CurrentUICulture.DateTimeFormat.ShortDatePattern + " " + CultureInfo.CurrentUICulture.DateTimeFormat.LongTimePattern;
         CultureInfo enUS = new CultureInfo("en-US");
@@ -70,6 +70,8 @@ namespace EInvoiceAPI.Controllers
                 TokenSerial = dtSign.Rows[0]["TokenSerial"].ToString();
                 TokenPin = dtSign.Rows[0]["TokenPin"].ToString();
                 CertSerialNum = dtSign.Rows[0]["CertSerialNum"].ToString();
+                object useXmltojson = dtSign.Rows[0]["UseXMLTOJSON"];
+                UseXML = useXmltojson != null && Convert.ToBoolean(useXmltojson);
             }
         }
 
@@ -83,10 +85,7 @@ namespace EInvoiceAPI.Controllers
                 requestbody = await sr.ReadToEndAsync();
             }
 
-            object useXmltojson = TokenManager.GetSettings("UseXMLTOJSON");
             object runImpersonated = TokenManager.GetSettings("UseImpersonation");
-
-            UseXML = useXmltojson != null && Convert.ToBoolean(useXmltojson);
             UseIMP = runImpersonated != null && Convert.ToBoolean(runImpersonated);
 
             if (UseXML)
