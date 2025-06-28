@@ -18,9 +18,11 @@ using System.Security.Cryptography.Pkcs;
 using System.Security.Cryptography.X509Certificates;
 using System.Security.Principal;
 using System.Text;
+using System.Text.RegularExpressions;
 using System.Xml;
 using System.Xml.Linq;
 using System.Xml.Serialization;
+using EInvoiceAPI.Services;
 
 namespace EInvoiceAPI.Controllers
 {
@@ -51,20 +53,22 @@ namespace EInvoiceAPI.Controllers
 
         private readonly Serializer _serializer;
         private readonly Hasher _hasher;
+        private readonly CertificateCache _certificateCache;
 
         private readonly string DllLibPath = "eps2003csp11.dll";
         private static readonly Dictionary<string, object> SlotLocks = new();
         private static readonly object SlotLocksDictLock = new();
 
-        public Invoice(Serializer serializer, Hasher hasher)
+        public Invoice(Serializer serializer, Hasher hasher, CertificateCache certificateCache)
         {
             _serializer = serializer;
             _hasher = hasher;
+            _certificateCache = certificateCache;
         }
 
         private void GetE_Sign(string CompanyCode)
         {
-            DataTable dtSign = TokenManager.getE_Signing(Request.Headers["CompanyCode"]);
+            DataTable dtSign = TokenManager.getE_Signing(CompanyCode);
             if (dtSign.Rows.Count > 0)
             {
                 TokenSerial = dtSign.Rows[0]["TokenSerial"].ToString();
@@ -79,10 +83,11 @@ namespace EInvoiceAPI.Controllers
         [Produces("application/json")]
         public async Task<IActionResult> SignInvoice()
         {
-            string requestbody;
+            string? companyCode = Request.Headers["CompanyCode"].ToString();
+            string requestBody;
             using (var sr = new StreamReader(Request.Body))
             {
-                requestbody = await sr.ReadToEndAsync();
+                requestBody = await sr.ReadToEndAsync();
             }
 
             object runImpersonated = TokenManager.GetSettings("UseImpersonation");
@@ -95,7 +100,7 @@ namespace EInvoiceAPI.Controllers
                 try
                 {
                     XmlSerializer serializer = new XmlSerializer(typeof(document));
-                    StringReader reader = new StringReader(requestbody);
+                    StringReader reader = new StringReader(requestBody);
                     object XmlInvoice = (document)serializer.Deserialize(reader);
 
                     if (((document)XmlInvoice).receiver.id == null)
@@ -106,14 +111,14 @@ namespace EInvoiceAPI.Controllers
                     if (((document)XmlInvoice).documentType == "EI")
                     {
                         serializer = new XmlSerializer(typeof(export_document));
-                        reader = new StringReader(requestbody);
+                        reader = new StringReader(requestBody);
                         XmlInvoice = (export_document)serializer.Deserialize(reader);
                         if (((export_document)XmlInvoice).receiver.id == null)
                         {
                             ((export_document)XmlInvoice).receiver.id = String.Empty;
                         }
                     }
-                    requestbody = JsonConvert.SerializeObject(XmlInvoice);
+                    requestBody = JsonConvert.SerializeObject(XmlInvoice);
                 }
                 catch (Exception ex)
                 {
@@ -162,13 +167,13 @@ namespace EInvoiceAPI.Controllers
                 Formatting = Newtonsoft.Json.Formatting.None
             };
 
-            JObject? invoice = JsonConvert.DeserializeObject<JObject>(requestbody, settings);
+            JObject? invoice = JsonConvert.DeserializeObject<JObject>(requestBody, settings);
             var serializedJson = _serializer.Serialize(invoice);
 
             string docVer = invoice["documentTypeVersion"]?.ToString() ?? string.Empty;
 
-            GetE_Sign(Request.Headers["CompanyCode"]);
-            string signValue = (docVer.Equals("0.9") ? "ANY" : SignWithCms(Encoding.UTF8.GetBytes(serializedJson), UseIMP));
+            GetE_Sign(companyCode);
+            string signValue = docVer.Equals("0.9") ? "ANY" : SignWithCms(Encoding.UTF8.GetBytes(serializedJson), UseIMP, companyCode);
             if (signValue.StartsWith("Error:"))
             {
                 return StatusCode(SignError, signValue);
@@ -204,7 +209,7 @@ namespace EInvoiceAPI.Controllers
             }
         }
 
-        private string SignWithCms(byte[] data, bool runImpersonated)
+        private string SignWithCms(byte[] data, bool runImpersonated, string CompanyCode)
         {
             string domainName = TokenManager.GetSettings("ImpDomain")?.ToString() ?? string.Empty;
             string userName = TokenManager.GetSettings("ImpUsername")?.ToString() ?? string.Empty;
@@ -254,40 +259,89 @@ namespace EInvoiceAPI.Controllers
                                 return "Error: Certificate not found in token";
                             }
 
-                            X509Certificate2 certForSigning = null;
-                            if (runImpersonated)
-                            {
-                                WindowsIdentity.RunImpersonated(
-                                  safeAccessTokenHandle,
-                                  () =>
-                                  {
-                                      X509Store store = new X509Store(StoreName.My, StoreLocation.CurrentUser);
-                                      store.Open(OpenFlags.MaxAllowed);
+                            X509Certificate2? certForSigning = null;
 
-                                      foreach (X509Certificate2 cert in store.Certificates)
-                                      {
-                                          if (cert.SerialNumber == CertSerialNum)
-                                          {
-                                              certForSigning = cert;
-                                          }
-                                      }
-                                      store.Close();
-                                  }
-                                );
-                            }
-                            else
-                            {
-                                X509Store store = new X509Store(StoreName.My, StoreLocation.CurrentUser);
-                                store.Open(OpenFlags.MaxAllowed);
+                            // Try to get from cache
+                            certForSigning = _certificateCache.Get(CertSerialNum);
 
-                                foreach (X509Certificate2 cert in store.Certificates)
+                            if (certForSigning == null)
+                            {
+                                // Not in cache, use original code to get from store (with or without impersonation)
+                                if (runImpersonated)
                                 {
-                                    if (cert.SerialNumber == CertSerialNum)
-                                    {
-                                        certForSigning = cert;
-                                    }
+                                    WindowsIdentity.RunImpersonated(
+                                        safeAccessTokenHandle,
+                                        () =>
+                                        {
+                                            X509Store store = new X509Store(StoreName.My, StoreLocation.CurrentUser);
+                                            store.Open(OpenFlags.MaxAllowed);
+                                            foreach (X509Certificate2 cert in store.Certificates)
+                                            {
+                                                if (cert.SerialNumber == CertSerialNum)
+                                                {
+                                                    certForSigning = cert;
+                                                    // Add to cache
+                                                    _certificateCache.Set(CertSerialNum, certForSigning);
+                                                    break;
+                                                }
+                                            }
+                                            store.Close();
+                                        }
+                                    );
                                 }
-                                store.Close();
+                                else
+                                {
+                                    X509Store store = new X509Store(StoreName.My, StoreLocation.CurrentUser);
+                                    store.Open(OpenFlags.MaxAllowed);
+                                    foreach (X509Certificate2 cert in store.Certificates)
+                                    {
+                                        if (cert.SerialNumber == CertSerialNum)
+                                        {
+                                            certForSigning = cert;
+                                            // Add to cache
+                                            _certificateCache.Set(CertSerialNum, certForSigning);
+                                            break;
+                                        }
+                                    }
+                                    store.Close();
+                                }
+                            }
+
+                            // If still not found, return error as before
+                            if (certForSigning == null)
+                            {
+                                return "Error: Certificate not found in user certificates store";
+                            }
+
+                            // Check if the certificate is expired
+                            if (DateTime.UtcNow > certForSigning.NotAfter.ToUniversalTime())
+                            {
+                                return $"Error: Certificate expired on {certForSigning.NotAfter.ToString("u")}";
+                            }
+
+                            // Validate VATEG number in certificate subject against CompanyCode
+                            var attributes = ParseSubjectAttributes(certForSigning);
+
+                            string companyName = attributes.TryGetValue("CN", out var cn) ? cn : "Unknown";
+                            string? vategValue = attributes.TryGetValue("OID.2.5.4.97", out var vategVal) ? vategVal : null;
+
+                            // Remove "VATEG-" prefix to get pure company code
+                            string certCompanyCode = null;
+                            if (vategValue != null && vategValue.StartsWith("VATEG-"))
+                            {
+                                certCompanyCode = vategValue.Substring("VATEG-".Length);
+                            }
+
+                            // Error if OID.2.5.4.97 is missing or doesn't start with VATEG-
+                            if (certCompanyCode == null)
+                            {
+                                return $"Error: VAT number not found in certificate";
+                            }
+
+                            // Compare to CompanyCode
+                            if (!string.Equals(certCompanyCode, CompanyCode, StringComparison.Ordinal))
+                            {
+                                return $"Error: Certificate VAT number ({certCompanyCode}) does not match CompanyCode ({CompanyCode})\r\nCertificate related to company {companyName}";
                             }
 
                             var attributeValues = session.GetAttributeValue(certificate, new List<CKA> { CKA.CKA_VALUE });
@@ -306,11 +360,6 @@ namespace EInvoiceAPI.Controllers
                             IObjectHandle? privateKeyHandler = session.FindAllObjects(certificateSearchAttributes).LastOrDefault();
 
                             RSA privateKey = new TokenRSA(certForSigning, session, slot, privateKeyHandler);
-
-                            if (certForSigning is null)
-                            {
-                                return "Error: Certificate not found in user certificates store";
-                            }
 
                             ContentInfo content = new ContentInfo(new Oid("1.2.840.113549.1.7.5"), data);
                             SignedCms cms = new SignedCms(content, true);
@@ -352,5 +401,24 @@ namespace EInvoiceAPI.Controllers
             }
         }
 
+        private static Dictionary<string, string> ParseSubjectAttributes(X509Certificate2 cert)
+        {
+            var attributes = new Dictionary<string, string>();
+            var dn = cert.SubjectName; // X500DistinguishedName
+            string subject = dn.Name; // Canonical, comma-separated
+
+            foreach (var part in subject.Split(','))
+            {
+                var trimmed = part.Trim();
+                int idx = trimmed.IndexOf('=');
+                if (idx > 0 && idx < trimmed.Length - 1)
+                {
+                    string key = trimmed.Substring(0, idx).Trim();
+                    string value = trimmed.Substring(idx + 1).Trim();
+                    attributes[key] = value;
+                }
+            }
+            return attributes;
+        }
     }
 }

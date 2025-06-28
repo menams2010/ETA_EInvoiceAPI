@@ -1,4 +1,5 @@
-﻿using Microsoft.AspNetCore.Builder;
+﻿using EInvoiceAPI.Services;
+using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Hosting;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
@@ -45,6 +46,8 @@ namespace EInvoiceAPI
             services.AddScoped<Serializer>();
             services.AddScoped<Hasher>();
             services.AddControllers();
+            services.AddSingleton<CertificateCache>();
+
         }
 
         // This method gets called by the runtime. Use this method to configure the HTTP request pipeline.
@@ -58,7 +61,7 @@ namespace EInvoiceAPI
             {
                 app.UseHsts();
             }
-
+            
             app.UseHttpsRedirection();
 
             app.UseRouting();
