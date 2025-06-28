@@ -12,8 +12,16 @@ namespace EInvoiceAPI.Services
         {
             lock (_lock)
             {
-                _certCache.TryGetValue(certSerialNum, out var cert);
-                return cert;
+                if (_certCache.TryGetValue(certSerialNum, out var cert))
+                {
+                    if (cert != null && DateTime.UtcNow > cert.NotAfter.ToUniversalTime())
+                    {
+                        _certCache.Remove(certSerialNum);
+                        return null;
+                    }
+                    return cert;
+                }
+                return null;
             }
         }
 
