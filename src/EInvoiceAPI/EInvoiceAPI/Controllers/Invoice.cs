@@ -18,6 +18,8 @@ using System.Security.Cryptography.Pkcs;
 using System.Security.Cryptography.X509Certificates;
 using System.Security.Principal;
 using System.Text;
+using System.Xml;
+using System.Xml.Linq;
 using System.Xml.Serialization;
 
 namespace EInvoiceAPI.Controllers
@@ -89,16 +91,67 @@ namespace EInvoiceAPI.Controllers
 
             if (UseXML)
             {
-                XmlSerializer serializer = new XmlSerializer(typeof(document));
-                StringReader reader = new StringReader(requestbody);
-                object XmlInvoice = (document)serializer.Deserialize(reader);
+                // Convert XML to JSON if the request body is in XML format
 
-                if (((document)XmlInvoice).receiver.id == null)
+                try
                 {
-                    ((document)XmlInvoice).receiver.id = string.Empty;
+                    XmlSerializer serializer = new XmlSerializer(typeof(document));
+                    StringReader reader = new StringReader(requestbody);
+                    object XmlInvoice = (document)serializer.Deserialize(reader);
+
+                    if (((document)XmlInvoice).receiver.id == null)
+                    {
+                        ((document)XmlInvoice).receiver.id = string.Empty;
+                    }
+
+                    if (((document)XmlInvoice).documentType == "EI")
+                    {
+                        serializer = new XmlSerializer(typeof(export_document));
+                        reader = new StringReader(requestbody);
+                        XmlInvoice = (export_document)serializer.Deserialize(reader);
+                        if (((export_document)XmlInvoice).receiver.id == null)
+                        {
+                            ((export_document)XmlInvoice).receiver.id = String.Empty;
+                        }
+                    }
+                    requestbody = JsonConvert.SerializeObject(XmlInvoice);
+                }
+                catch (Exception ex)
+                {
+                    return StatusCode(SignError, "Error: Invalid XML format - " + ex.Message);
                 }
 
-                requestbody = JsonConvert.SerializeObject(XmlInvoice);
+                //try
+                //{
+                //    XmlDocument xmlDoc = new XmlDocument();
+                //    xmlDoc.LoadXml(requestbody);
+
+                //    XmlNode? receiverNode = xmlDoc.SelectSingleNode("//receiver");
+                //    if (receiverNode != null)
+                //    {
+                //        XmlNode? typeNode = receiverNode.SelectSingleNode("type");
+                //        if (typeNode != null)
+                //        {
+                //            XmlElement newTag = xmlDoc.CreateElement("id");
+                //            newTag.InnerText = String.Empty;
+
+                //            if (typeNode.NextSibling != null)
+                //            {
+                //                receiverNode.InsertAfter(newTag, typeNode);
+                //            }
+                //            else
+                //            {
+                //                receiverNode.AppendChild(newTag);
+                //            }
+                //        }
+                //    }
+
+                //    requestbody = JsonConvert.SerializeXmlNode(xmlDoc, Newtonsoft.Json.Formatting.None, true);
+                //}
+                //catch (Exception ex)
+                //{
+                //    return StatusCode(SignError, "Error: Invalid XML format - " + ex.Message);
+                //}
             }
 
             var settings = new JsonSerializerSettings
@@ -107,7 +160,7 @@ namespace EInvoiceAPI.Controllers
                 FloatParseHandling = FloatParseHandling.Decimal,
                 DateFormatHandling = DateFormatHandling.IsoDateFormat,
                 DateParseHandling = DateParseHandling.None,
-                Formatting = Formatting.None
+                Formatting = Newtonsoft.Json.Formatting.None
             };
 
             JObject? invoice = JsonConvert.DeserializeObject<JObject>(requestbody, settings);
