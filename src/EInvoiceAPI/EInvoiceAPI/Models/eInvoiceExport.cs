@@ -5,7 +5,7 @@ using System.Linq;
 using System.Text;
 using System.Xml.Serialization;
 
-namespace EInvoiceAPI
+namespace EInvoiceAPI.Models
 {
     // using System.Xml.Serialization;
     // XmlSerializer serializer = new XmlSerializer(typeof(document));
@@ -15,7 +15,7 @@ namespace EInvoiceAPI
     // }
 
     [XmlRoot(ElementName = "address")]
-    public class address
+    public class export_address
     {
         [XmlElement(ElementName = "branchID")]
         public string branchID { get; set; }
@@ -39,8 +39,36 @@ namespace EInvoiceAPI
         public string postalCode { get; set; }
     }
 
+    [XmlRoot(ElementName = "delivery")]
+    public class export_delivery
+    {
+        [XmlElement(ElementName = "approach")]
+        public string approach { get; set; }
+
+        [XmlElement(ElementName = "packaging")]
+        public string packaging { get; set; }
+
+        [XmlElement(ElementName = "dateValidity")]
+        public string dateValidity { get; set; }
+
+        [XmlElement(ElementName = "exportPort")]
+        public string exportPort { get; set; }
+
+        [XmlElement(ElementName = "countryOfOrigin")]
+        public string countryOfOrigin { get; set; }
+
+        [XmlElement(ElementName = "grossWeight")]
+        public double grossWeight { get; set; }
+
+        [XmlElement(ElementName = "netWeight")]
+        public double netWeight { get; set; }
+
+        [XmlElement(ElementName = "terms")]
+        public string terms { get; set; }
+    }
+
     [XmlRoot(ElementName = "address")]
-    public class reciverAddress
+    public class reciver_export_Address
     {
         [XmlElement(ElementName = "country")]
         public string country { get; set; }
@@ -62,7 +90,7 @@ namespace EInvoiceAPI
     }
 
     [XmlRoot(ElementName = "issuer")]
-    public class issuer
+    public class export_issuer
     {
 
         [XmlElement(ElementName = "type")]
@@ -75,11 +103,11 @@ namespace EInvoiceAPI
         public string name { get; set; }
 
         [XmlElement(ElementName = "address")]
-        public address address { get; set; }
+        public export_address address { get; set; }
     }
 
     [XmlRoot(ElementName = "receiver")]
-    public class receiver
+    public class export_receiver
     {
 
         [XmlElement(ElementName = "type")]
@@ -92,11 +120,11 @@ namespace EInvoiceAPI
         public string name { get; set; }
 
         [XmlElement(ElementName = "address")]
-        public reciverAddress address { get; set; }
+        public reciver_export_Address address { get; set; }
     }
 
     [XmlRoot(ElementName = "unitValue")]
-    public class unitValue
+    public class export_unitValue
     {
 
         [XmlElement(ElementName = "currencySold")]
@@ -113,7 +141,7 @@ namespace EInvoiceAPI
     }
 
     [XmlRoot(ElementName = "discount")]
-    public class discount
+    public class export_discount
     {
 
         [XmlElement(ElementName = "rate")]
@@ -125,7 +153,7 @@ namespace EInvoiceAPI
 
     [XmlRoot(ElementName = "taxableItem")]
     [JsonObject("taxableItem")]
-    public class taxableItem
+    public class export_taxableItem
     {
 
         [XmlElement(ElementName = "taxType")]
@@ -149,9 +177,9 @@ namespace EInvoiceAPI
     //    public taxableItem taxableItem { get; set; }
     //}
 
-    [XmlRoot(ElementName = "invoiceLine")]
+    [XmlType("invoiceLine")]
     [JsonObject("invoiceLine")]
-    public class invoiceLine
+    public class export_invoiceLine
     {
 
         [XmlElement(ElementName = "description")]
@@ -171,7 +199,7 @@ namespace EInvoiceAPI
 
         [JsonProperty("unitValue")]
         [XmlElement(ElementName = "unitValue")]
-        public unitValue unitValue { get; set; }
+        public export_unitValue unitValue { get; set; }
 
         [XmlElement(ElementName = "salesTotal")]
         public double salesTotal { get; set; }
@@ -192,10 +220,10 @@ namespace EInvoiceAPI
         public double itemsDiscount { get; set; }
 
         [XmlElement(ElementName = "discount")]
-        public discount discount { get; set; }
+        public export_discount discount { get; set; }
 
         [XmlArray(ElementName = "taxableItems")]
-        public List<taxableItem> taxableItems { get; set; }
+        public List<export_taxableItem> taxableItems { get; set; }
 
         [XmlElement(ElementName = "internalCode")]
         public string internalCode { get; set; }
@@ -212,7 +240,7 @@ namespace EInvoiceAPI
     //}
 
     [XmlRoot(ElementName = "taxTotal")]
-    public class taxTotal
+    public class export_taxTotal
     {
 
         [XmlElement(ElementName = "taxType")]
@@ -232,14 +260,14 @@ namespace EInvoiceAPI
     //}
 
     [XmlRoot(ElementName = "document")]
-    public class document
+    public class export_document
     {
 
         [XmlElement(ElementName = "issuer")]
-        public issuer issuer { get; set; }
+        public export_issuer issuer { get; set; }
 
         [XmlElement(ElementName = "receiver")]
-        public receiver receiver { get; set; }
+        public export_receiver receiver { get; set; }
 
         [XmlElement(ElementName = "documentType")]
         public string documentType { get; set; }
@@ -250,15 +278,21 @@ namespace EInvoiceAPI
         [XmlElement(ElementName = "dateTimeIssued")]
         public string dateTimeIssued { get; set; }
 
+        [XmlElement(ElementName = "serviceDeliveryDate")]
+        public string serviceDeliveryDate { get; set; }
+
         [XmlElement(ElementName = "taxpayerActivityCode")]
         public string taxpayerActivityCode { get; set; }
 
         [XmlElement(ElementName = "internalID")]
         public string internalID { get; set; }
 
+        [XmlElement(ElementName = "delivery")]
+        public export_delivery delivery { get; set; }
+
         [XmlArray(ElementName = "invoiceLines")]
-        //public invoiceLines invoiceLines { get; set; }
-        public List<invoiceLine> invoiceLines { get; set; }
+        //public List<invoiceLine> invoiceLines { get; set; }
+        public List<export_invoiceLine> invoiceLines { get; set; }
 
         [XmlElement(ElementName = "totalSalesAmount")]
         public double totalSalesAmount { get; set; }
@@ -270,7 +304,7 @@ namespace EInvoiceAPI
         public double netAmount { get; set; }
 
         [XmlArray(ElementName = "taxTotals")]
-        public List<taxTotal> taxTotals { get; set; }
+        public List<export_taxTotal> taxTotals { get; set; }
 
         [XmlElement(ElementName = "totalAmount")]
         public double totalAmount { get; set; }
