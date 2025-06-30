@@ -1,7 +1,11 @@
+<<<<<<< HEAD
 ﻿using EInvoiceAPI.Models;
 using EInvoiceAPI.Services;
 using EInvoiceAPI.Helpers;
 using Microsoft.AspNetCore.Mvc;
+=======
+﻿using Microsoft.AspNetCore.Mvc;
+>>>>>>> parent of 83a33b2 (Add code of rest methods)
 using Microsoft.Win32.SafeHandles;
 using Net.Pkcs11Interop.Common;
 using Net.Pkcs11Interop.HighLevelAPI;
@@ -11,7 +15,11 @@ using Org.BouncyCastle.Asn1;
 using Org.BouncyCastle.Asn1.Ess;
 using RestSharp;
 using System.Data;
+<<<<<<< HEAD
 using System.Dynamic;
+=======
+using System.Diagnostics.Eventing.Reader;
+>>>>>>> parent of 83a33b2 (Add code of rest methods)
 using System.Globalization;
 using System.Net;
 using System.Runtime.InteropServices;
@@ -21,7 +29,12 @@ using System.Security.Cryptography.X509Certificates;
 using System.Security.Principal;
 using System.Text;
 using System.Xml.Linq;
+<<<<<<< HEAD
 using System.Collections.Concurrent;
+=======
+using System.Xml.Serialization;
+using EInvoiceAPI.Services;
+>>>>>>> parent of 83a33b2 (Add code of rest methods)
 
 namespace EInvoiceAPI.Controllers
 {
@@ -29,6 +42,30 @@ namespace EInvoiceAPI.Controllers
     [ApiController]
     public class Invoice : ControllerBase
     {
+<<<<<<< HEAD
+=======
+        RestClient client = new RestClient();
+        private int tryCount = 0;
+        private DataTable tokenTable;
+        private string? IdentityBaseURL;
+        private string? SystemAPIBaseURL;
+        private string? TokenSerial;
+        private string? TokenPin;
+        private string? CertSerialNum;
+        private string? ClientId;
+        private string? ClientSecret;
+        private bool UseXML = false;
+        private bool UseIMP;
+        string sysUIFormat = CultureInfo.CurrentUICulture.DateTimeFormat.ShortDatePattern + " " + CultureInfo.CurrentUICulture.DateTimeFormat.LongTimePattern;
+        CultureInfo enUS = new CultureInfo("en-US");
+        //const int SignError = 197458;
+        const int SignError = (int)HttpStatusCode.Locked;
+
+        [DllImport("advapi32.dll", SetLastError = true, CharSet = CharSet.Auto)]
+        public static extern bool LogonUser(String lpszUsername, String lpszDomain, String lpszPassword,
+           int dwLogonType, int dwLogonProvider, out SafeAccessTokenHandle phToken);
+
+>>>>>>> parent of 83a33b2 (Add code of rest methods)
         private readonly Serializer _serializer;
         private readonly Hasher _hasher;
         private readonly CertificateCache _certificateCache;
@@ -90,7 +127,11 @@ namespace EInvoiceAPI.Controllers
         [Produces("application/json")]
         public async Task<IActionResult> SignInvoice()
         {
+<<<<<<< HEAD
             var companyCode = Request.Headers["CompanyCode"].ToString();
+=======
+            string? companyCode = Request.Headers["CompanyCode"].ToString();
+>>>>>>> parent of 83a33b2 (Add code of rest methods)
             string requestBody;
             using (var sr = new StreamReader(Request.Body))
                 requestBody = await sr.ReadToEndAsync();
@@ -117,6 +158,7 @@ namespace EInvoiceAPI.Controllers
             }
         }
 
+<<<<<<< HEAD
         [HttpPost("[action]")]
         public async Task<IActionResult> SendInvoice()
         {
@@ -178,6 +220,8 @@ namespace EInvoiceAPI.Controllers
             return StatusCode(Convert.ToInt32(response.StatusCode), res);
         }
 
+=======
+>>>>>>> parent of 83a33b2 (Add code of rest methods)
         private object GetSlotLock(string slotSerial)
         {
             lock (SlotLocksDictLock)
