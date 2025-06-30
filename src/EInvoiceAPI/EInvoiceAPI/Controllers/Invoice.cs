@@ -1,5 +1,6 @@
 ﻿using EInvoiceAPI.Models;
 using EInvoiceAPI.Services;
+using EInvoiceAPI.Helpers;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.Win32.SafeHandles;
 using Net.Pkcs11Interop.Common;
@@ -32,7 +33,7 @@ namespace EInvoiceAPI.Controllers
     [ApiController]
     public class Invoice : ControllerBase
     {
-        RestClient client = new RestClient();
+        private static RestClient client = InvoiceHelper.SharedClient;
         private int tryCount = 0;
         private DataTable tokenTable;
         private string? IdentityBaseURL;
@@ -44,12 +45,13 @@ namespace EInvoiceAPI.Controllers
         private string? ClientSecret;
         private bool UseXML = false;
         private bool UseIMP;
-        string? companyCode;
-        string? environmentId;
-        string sysUIFormat = CultureInfo.CurrentUICulture.DateTimeFormat.ShortDatePattern + " " + CultureInfo.CurrentUICulture.DateTimeFormat.LongTimePattern;
-        CultureInfo enUS = new CultureInfo("en-US");
-        //const int SignError = 197458;
-        const int SignError = (int)HttpStatusCode.Locked;
+        private string? companyCode;
+        private string? environmentId;
+        private readonly string sysUIFormat = CultureInfo.CurrentUICulture.DateTimeFormat.ShortDatePattern
+                                              + " "
+                                              + CultureInfo.CurrentUICulture.DateTimeFormat.LongTimePattern;
+        private readonly CultureInfo enUS = new CultureInfo("en-US");
+        private const int SignError = (int)HttpStatusCode.Locked;
 
         [DllImport("advapi32.dll", SetLastError = true, CharSet = CharSet.Auto)]
         public static extern bool LogonUser(String lpszUsername, String lpszDomain, String lpszPassword,
@@ -70,19 +72,6 @@ namespace EInvoiceAPI.Controllers
             _certificateCache = certificateCache;
         }
 
-        private void GetE_Sign(string CompanyCode)
-        {
-            DataTable dtSign = TokenManager.getE_Signing(CompanyCode);
-            if (dtSign.Rows.Count > 0)
-            {
-                TokenSerial = dtSign.Rows[0]["TokenSerial"].ToString();
-                TokenPin = dtSign.Rows[0]["TokenPin"].ToString();
-                CertSerialNum = dtSign.Rows[0]["CertSerialNum"].ToString();
-                object useXmltojson = dtSign.Rows[0]["UseXMLTOJSON"];
-                UseXML = useXmltojson != null && Convert.ToBoolean(useXmltojson);
-            }
-        }
-
         [HttpPost("[action]")]
         [Produces("application/json")]
         public async Task<IActionResult> SignInvoice()
@@ -99,85 +88,27 @@ namespace EInvoiceAPI.Controllers
 
             if (UseXML)
             {
-                // Convert XML to JSON if the request body is in XML format
-
                 try
                 {
-                    XmlSerializer serializer = new XmlSerializer(typeof(document));
-                    StringReader reader = new StringReader(requestBody);
-                    object XmlInvoice = (document)serializer.Deserialize(reader);
-
-                    if (((document)XmlInvoice).receiver.id == null)
-                    {
-                        ((document)XmlInvoice).receiver.id = string.Empty;
-                    }
-
-                    if (((document)XmlInvoice).documentType == "EI")
-                    {
-                        serializer = new XmlSerializer(typeof(export_document));
-                        reader = new StringReader(requestBody);
-                        XmlInvoice = (export_document)serializer.Deserialize(reader);
-                        if (((export_document)XmlInvoice).receiver.id == null)
-                        {
-                            ((export_document)XmlInvoice).receiver.id = String.Empty;
-                        }
-                    }
-                    requestBody = JsonConvert.SerializeObject(XmlInvoice);
+                    InvoiceHelper.ConvertXmlToInvoiceObject(requestBody, out var json);
+                    requestBody = json;
                 }
                 catch (Exception ex)
                 {
                     return StatusCode(SignError, "Error: Invalid XML format - " + ex.Message);
                 }
-
-                //try
-                //{
-                //    XmlDocument xmlDoc = new XmlDocument();
-                //    xmlDoc.LoadXml(requestbody);
-
-                //    XmlNode? receiverNode = xmlDoc.SelectSingleNode("//receiver");
-                //    if (receiverNode != null)
-                //    {
-                //        XmlNode? typeNode = receiverNode.SelectSingleNode("type");
-                //        if (typeNode != null)
-                //        {
-                //            XmlElement newTag = xmlDoc.CreateElement("id");
-                //            newTag.InnerText = String.Empty;
-
-                //            if (typeNode.NextSibling != null)
-                //            {
-                //                receiverNode.InsertAfter(newTag, typeNode);
-                //            }
-                //            else
-                //            {
-                //                receiverNode.AppendChild(newTag);
-                //            }
-                //        }
-                //    }
-
-                //    requestbody = JsonConvert.SerializeXmlNode(xmlDoc, Newtonsoft.Json.Formatting.None, true);
-                //}
-                //catch (Exception ex)
-                //{
-                //    return StatusCode(SignError, "Error: Invalid XML format - " + ex.Message);
-                //}
             }
 
-            var settings = new JsonSerializerSettings
-            {
-                FloatFormatHandling = FloatFormatHandling.String,
-                FloatParseHandling = FloatParseHandling.Decimal,
-                DateFormatHandling = DateFormatHandling.IsoDateFormat,
-                DateParseHandling = DateParseHandling.None,
-                Formatting = Newtonsoft.Json.Formatting.None
-            };
-
-            JObject? invoice = JsonConvert.DeserializeObject<JObject>(requestBody, settings);
+            JObject? invoice = InvoiceHelper.DeserializeInvoice(requestBody);
             var serializedJson = _serializer.Serialize(invoice);
-
             string docVer = invoice["documentTypeVersion"]?.ToString() ?? string.Empty;
 
-            GetE_Sign(companyCode);
-            string signValue = docVer.Equals("0.9") ? "ANY" : SignWithCms(Encoding.UTF8.GetBytes(serializedJson), UseIMP, companyCode);
+            TokenHelper.GetE_Sign(companyCode, out TokenSerial, out TokenPin, out CertSerialNum, out UseXML);
+
+            string signValue = docVer.Equals("0.9")
+                ? "ANY"
+                : SignWithCms(Encoding.UTF8.GetBytes(serializedJson), UseIMP, companyCode);
+
             if (signValue.StartsWith("Error:"))
             {
                 return StatusCode(SignError, signValue);
@@ -201,7 +132,6 @@ namespace EInvoiceAPI.Controllers
         }
 
         [HttpPost("[action]")]
-        //public async Task<IActionResult> SendInvoice([FromBody] object body)
         public async Task<IActionResult> SendInvoice()
         {
             companyCode = Request.Headers["CompanyCode"].ToString();
@@ -217,30 +147,10 @@ namespace EInvoiceAPI.Controllers
 
             if (UseXML)
             {
-                // Convert XML to JSON if the request body is in XML format
-
                 try
                 {
-                    XmlSerializer serializer = new XmlSerializer(typeof(document));
-                    StringReader reader = new StringReader(requestBody);
-                    object XmlInvoice = (document)serializer.Deserialize(reader);
-
-                    if (((document)XmlInvoice).receiver.id == null)
-                    {
-                        ((document)XmlInvoice).receiver.id = string.Empty;
-                    }
-
-                    if (((document)XmlInvoice).documentType == "EI")
-                    {
-                        serializer = new XmlSerializer(typeof(export_document));
-                        reader = new StringReader(requestBody);
-                        XmlInvoice = (export_document)serializer.Deserialize(reader);
-                        if (((export_document)XmlInvoice).receiver.id == null)
-                        {
-                            ((export_document)XmlInvoice).receiver.id = String.Empty;
-                        }
-                    }
-                    requestBody = JsonConvert.SerializeObject(XmlInvoice);
+                    InvoiceHelper.ConvertXmlToInvoiceObject(requestBody, out var json);
+                    requestBody = json;
                 }
                 catch (Exception ex)
                 {
@@ -248,22 +158,15 @@ namespace EInvoiceAPI.Controllers
                 }
             }
 
-            var settings = new JsonSerializerSettings
-            {
-                FloatFormatHandling = FloatFormatHandling.String,
-                FloatParseHandling = FloatParseHandling.Decimal,
-                DateFormatHandling = DateFormatHandling.IsoDateFormat,
-                DateParseHandling = DateParseHandling.None,
-                Formatting = Newtonsoft.Json.Formatting.None
-            };
-
-            JObject? invoice = JsonConvert.DeserializeObject<JObject>(requestBody, settings);
+            JObject? invoice = InvoiceHelper.DeserializeInvoice(requestBody);
             var serializedJson = _serializer.Serialize(invoice);
-
             string docVer = invoice["documentTypeVersion"]?.ToString() ?? string.Empty;
 
-            GetE_Sign(companyCode);
-            string signValue = docVer.Equals("0.9") ? "ANY" : SignWithCms(Encoding.UTF8.GetBytes(serializedJson), UseIMP, companyCode);
+            TokenHelper.GetE_Sign(companyCode, out TokenSerial, out TokenPin, out CertSerialNum, out UseXML);
+
+            string signValue = docVer.Equals("0.9")
+                ? "ANY"
+                : SignWithCms(Encoding.UTF8.GetBytes(serializedJson), UseIMP, companyCode);
             if (signValue.StartsWith("Error:"))
             {
                 return StatusCode(SignError, signValue);
@@ -279,7 +182,14 @@ namespace EInvoiceAPI.Controllers
             string signedInvoice = "{\"documents\":[" + invoice.ToString() + "]}";
 
         GetToken:
-            string? token = GetToken(companyCode, environmentId);
+            var token = TokenHelper.GetToken(companyCode, environmentId, out var tokenSettings, sysUIFormat);
+            if (token == "CANNOT")
+            {
+                return Unauthorized("Cannot Get Token");
+            }
+
+            IdentityBaseURL = tokenSettings?.EnvTokenUrl;
+            SystemAPIBaseURL = tokenSettings?.EnvInvoicingUrl;
 
             client.BaseUrl = new Uri(SystemAPIBaseURL + "documentsubmissions");
             client.Timeout = 30000;
@@ -290,19 +200,11 @@ namespace EInvoiceAPI.Controllers
             IRestResponse response = client.Execute(request);
             if (response.StatusCode == HttpStatusCode.Unauthorized)
             {
-                if (token == "CANNOT")
-                {
-                    return Unauthorized("Cannot Get Token");
-                }
-                else
-                {
-                    goto GetToken;
-                }
+                goto GetToken;
             }
 
             return StatusCode(Convert.ToInt32(response.StatusCode), response.Content);
         }
-
 
         [HttpGet("[action]")]
         public ActionResult<string> GetSubmission(string submitionUUID)
@@ -310,7 +212,15 @@ namespace EInvoiceAPI.Controllers
             companyCode = Request.Headers["CompanyCode"];
             environmentId = Request.Headers["EnvironmentId"];
         GetToken:
-            string? token = GetToken(companyCode, environmentId);
+            var token = TokenHelper.GetToken(companyCode, environmentId, out var tokenSettings, sysUIFormat);
+            if (token == "CANNOT")
+            {
+                return Unauthorized("Cannot Get Token");
+            }
+
+            IdentityBaseURL = tokenSettings?.EnvTokenUrl;
+            SystemAPIBaseURL = tokenSettings?.EnvInvoicingUrl;
+
             client.BaseUrl = new Uri(SystemAPIBaseURL + "documentSubmissions/" + submitionUUID);
             client.Timeout = 30000;
             var request = new RestRequest(Method.GET);
@@ -324,21 +234,13 @@ namespace EInvoiceAPI.Controllers
             }
             else if (response.StatusCode == HttpStatusCode.Unauthorized)
             {
-                if (token == "CANNOT")
-                {
-                    return Unauthorized("Cannot Get Token");
-                }
-                else
-                {
-                    goto GetToken;
-                }
+                goto GetToken;
             }
             else
             {
                 return BadRequest(response.Content);
             }
         }
-
 
         [HttpGet("[action]")]
         [Produces("application/json")]
@@ -347,7 +249,15 @@ namespace EInvoiceAPI.Controllers
             companyCode = Request.Headers["CompanyCode"].ToString();
             environmentId = Request.Headers["EnvironmentId"].ToString();
         GetToken:
-            string? token = GetToken(companyCode, environmentId);
+            var token = TokenHelper.GetToken(companyCode, environmentId, out var tokenSettings, sysUIFormat);
+            if (token == "CANNOT")
+            {
+                return Unauthorized("Cannot Get Token");
+            }
+
+            IdentityBaseURL = tokenSettings?.EnvTokenUrl;
+            SystemAPIBaseURL = tokenSettings?.EnvInvoicingUrl;
+
             client.BaseUrl = new Uri(SystemAPIBaseURL + "documents/" + documentUUID + "/details");
             client.Timeout = 30000;
             var request = new RestRequest(Method.GET);
@@ -355,25 +265,11 @@ namespace EInvoiceAPI.Controllers
             IRestResponse response = client.Execute(request);
             if (response.StatusCode == HttpStatusCode.Unauthorized)
             {
-                if (token == "CANNOT")
-                {
-                    return Unauthorized("Cannot Get Token");
-                }
-                else
-                {
-                    goto GetToken;
-                }
+                goto GetToken;
             }
             else
             {
-                JsonSerializerSettings? settings = new JsonSerializerSettings();
-                settings.FloatFormatHandling = FloatFormatHandling.String;
-                settings.FloatParseHandling = FloatParseHandling.Decimal;
-                settings.DateFormatHandling = DateFormatHandling.IsoDateFormat;
-                settings.DateParseHandling = DateParseHandling.None;
-                settings.Formatting = Newtonsoft.Json.Formatting.None;
-
-                var res = JsonConvert.DeserializeObject<ExpandoObject>(response.Content, settings);
+                var res = JsonConvert.DeserializeObject<ExpandoObject>(response.Content, InvoiceHelper.JsonSettings);
                 return StatusCode(Convert.ToInt32(response.StatusCode), res);
             }
         }
@@ -384,7 +280,15 @@ namespace EInvoiceAPI.Controllers
             companyCode = Request.Headers["CompanyCode"].ToString();
             environmentId = Request.Headers["EnvironmentId"].ToString();
         GetToken:
-            string? token = GetToken(companyCode, environmentId);
+            var token = TokenHelper.GetToken(companyCode, environmentId, out var tokenSettings, sysUIFormat);
+            if (token == "CANNOT")
+            {
+                return Unauthorized("Cannot Get Token");
+            }
+
+            IdentityBaseURL = tokenSettings?.EnvTokenUrl;
+            SystemAPIBaseURL = tokenSettings?.EnvInvoicingUrl;
+
             client.BaseUrl = new Uri(SystemAPIBaseURL + "documents/" + documentUUID + "/details");
             client.Timeout = 30000;
             var request = new RestRequest(Method.GET);
@@ -421,14 +325,7 @@ namespace EInvoiceAPI.Controllers
             }
             else if (response.StatusCode == HttpStatusCode.Unauthorized)
             {
-                if (token == "CANNOT")
-                {
-                    return Unauthorized("Cannot Get Token");
-                }
-                else
-                {
-                    goto GetToken;
-                }
+                goto GetToken;
             }
             else
             {
@@ -442,7 +339,15 @@ namespace EInvoiceAPI.Controllers
             companyCode = Request.Headers["CompanyCode"].ToString();
             environmentId = Request.Headers["EnvironmentId"].ToString();
         GetToken:
-            string? token = GetToken(companyCode, environmentId);
+            var token = TokenHelper.GetToken(companyCode, environmentId, out var tokenSettings, sysUIFormat);
+            if (token == "CANNOT")
+            {
+                return Unauthorized("Cannot Get Token");
+            }
+
+            IdentityBaseURL = tokenSettings?.EnvTokenUrl;
+            SystemAPIBaseURL = tokenSettings?.EnvInvoicingUrl;
+
             client = new RestClient();
             var request = new RestRequest("https://api.invoicing.eta.gov.eg/api/v1/documents/" + invoiceDocumentNo + "/details");
             request.Method = Method.GET;
@@ -466,11 +371,6 @@ namespace EInvoiceAPI.Controllers
 
             if (response.StatusCode == HttpStatusCode.Unauthorized)
             {
-                if (token == "CANNOT")
-                {
-                    return Unauthorized("Cannot Get Token");
-                }
-
                 goto GetToken;
             }
 
@@ -484,7 +384,15 @@ namespace EInvoiceAPI.Controllers
             environmentId = Request.Headers["EnvironmentId"].ToString();
             long pageNo = 1;
         GetToken:
-            string? token = GetToken(companyCode, environmentId);
+            var token = TokenHelper.GetToken(companyCode, environmentId, out var tokenSettings, sysUIFormat);
+            if (token == "CANNOT")
+            {
+                return Unauthorized("Cannot Get Token");
+            }
+
+            IdentityBaseURL = tokenSettings?.EnvTokenUrl;
+            SystemAPIBaseURL = tokenSettings?.EnvInvoicingUrl;
+
         ReadInvoices:
             var request = new RestRequest(SystemAPIBaseURL + "documents/recent?PageSize=100&PageNo=" + pageNo + "&direction=received&issuerId=" + vendorVatRegNo);
             request.Method = Method.GET;
@@ -514,11 +422,6 @@ namespace EInvoiceAPI.Controllers
             }
             if (response.StatusCode == HttpStatusCode.Unauthorized)
             {
-                if (token == "CANNOT")
-                {
-                    return Unauthorized("Cannot Get Token");
-                }
-
                 goto GetToken;
             }
             return StatusCode(Convert.ToInt32(response.StatusCode), response.Content);
@@ -530,7 +433,15 @@ namespace EInvoiceAPI.Controllers
             companyCode = Request.Headers["CompanyCode"].ToString();
             environmentId = Request.Headers["EnvironmentId"].ToString();
         GetToken:
-            string? token = GetToken(companyCode, environmentId);
+            var token = TokenHelper.GetToken(companyCode, environmentId, out var tokenSettings, sysUIFormat);
+            if (token == "CANNOT")
+            {
+                return Unauthorized("Cannot Get Token");
+            }
+
+            IdentityBaseURL = tokenSettings?.EnvTokenUrl;
+            SystemAPIBaseURL = tokenSettings?.EnvInvoicingUrl;
+
             client.BaseUrl = new Uri(SystemAPIBaseURL + "documents/state/" + documentUUID + "/state");
             client.Timeout = 30000;
             var request = new RestRequest(Method.PUT);
@@ -544,14 +455,7 @@ namespace EInvoiceAPI.Controllers
             }
             else if (response.StatusCode == HttpStatusCode.Unauthorized)
             {
-                if (token == "CANNOT")
-                {
-                    return Unauthorized("Cannot Get Token");
-                }
-                else
-                {
-                    goto GetToken;
-                }
+                goto GetToken;
             }
             else if (response.StatusCode == HttpStatusCode.BadRequest)
             {
@@ -629,12 +533,10 @@ namespace EInvoiceAPI.Controllers
 
                             X509Certificate2? certForSigning = null;
 
-                            // Try to get from cache
                             certForSigning = _certificateCache.Get(CertSerialNum);
 
                             if (certForSigning == null)
                             {
-                                // Not in cache, use original code to get from store (with or without impersonation)
                                 if (runImpersonated)
                                 {
                                     WindowsIdentity.RunImpersonated(
@@ -648,7 +550,6 @@ namespace EInvoiceAPI.Controllers
                                                 if (cert.SerialNumber == CertSerialNum)
                                                 {
                                                     certForSigning = cert;
-                                                    // Add to cache
                                                     _certificateCache.Set(CertSerialNum, certForSigning);
                                                     break;
                                                 }
@@ -666,7 +567,6 @@ namespace EInvoiceAPI.Controllers
                                         if (cert.SerialNumber == CertSerialNum)
                                         {
                                             certForSigning = cert;
-                                            // Add to cache
                                             _certificateCache.Set(CertSerialNum, certForSigning);
                                             break;
                                         }
@@ -675,38 +575,32 @@ namespace EInvoiceAPI.Controllers
                                 }
                             }
 
-                            // If still not found, return error as before
                             if (certForSigning == null)
                             {
                                 return "Error: Certificate not found in user certificates store";
                             }
 
-                            // Check if the certificate is expired
                             if (DateTime.UtcNow > certForSigning.NotAfter.ToUniversalTime())
                             {
                                 return $"Error: Certificate expired on {certForSigning.NotAfter.ToString("u")}";
                             }
 
-                            // Validate VATEG number in certificate subject against CompanyCode
                             var attributes = ParseSubjectAttributes(certForSigning);
 
                             string companyName = attributes.TryGetValue("CN", out var cn) ? cn : "Unknown";
                             string? vategValue = attributes.TryGetValue("OID.2.5.4.97", out var vategVal) ? vategVal : null;
 
-                            // Remove "VATEG-" prefix to get pure company code
                             string certCompanyCode = null;
                             if (vategValue != null && vategValue.StartsWith("VATEG-"))
                             {
                                 certCompanyCode = vategValue.Substring("VATEG-".Length);
                             }
 
-                            // Error if OID.2.5.4.97 is missing or doesn't start with VATEG-
                             if (certCompanyCode == null)
                             {
                                 return $"Error: VAT number not found in certificate";
                             }
 
-                            // Compare to CompanyCode
                             if (!string.Equals(certCompanyCode, CompanyCode, StringComparison.Ordinal))
                             {
                                 return $"Error: Certificate VAT number ({certCompanyCode}) does not match CompanyCode ({CompanyCode})\r\nCertificate related to company {companyName}";
@@ -762,7 +656,7 @@ namespace EInvoiceAPI.Controllers
                                 session.Logout();
                                 slot.CloseSession(session);
                             }
-                            catch { /* Ignore logout errors */ }
+                            catch { }
                         }
                     }
                 }
@@ -772,8 +666,8 @@ namespace EInvoiceAPI.Controllers
         private static Dictionary<string, string> ParseSubjectAttributes(X509Certificate2 cert)
         {
             var attributes = new Dictionary<string, string>();
-            var dn = cert.SubjectName; // X500DistinguishedName
-            string subject = dn.Name; // Canonical, comma-separated
+            var dn = cert.SubjectName;
+            string subject = dn.Name;
 
             foreach (var part in subject.Split(','))
             {
@@ -788,113 +682,9 @@ namespace EInvoiceAPI.Controllers
             }
             return attributes;
         }
-
-        [HttpGet("[action]")]
         public string ApiToken(string companyCode, string environmentId)
         {
-        GetToken:
-            tryCount++;
-            tokenTable = TokenManager.GetToken(companyCode, environmentId);
-            if (tokenTable.Rows.Count != 1)
-            {
-                return "CANNOT";
-            }
-
-            IdentityBaseURL = tokenTable.Rows[0]["EnvTokenUrl"].ToString();
-            SystemAPIBaseURL = tokenTable.Rows[0]["EnvInvoicingUrl"].ToString();
-            ClientId = tokenTable.Rows[0]["ClientId"].ToString();
-            ClientSecret = tokenTable.Rows[0]["ClientSecret"].ToString();
-            var dateTimeFormat = TokenManager.GetSettings("DateTimeFormat").ToString();
-            if (tokenTable.Rows[0]["time_get"].Equals(DBNull.Value))
-            {
-                tokenTable.Rows[0]["time_get"] = DateTime.Now.AddDays(-1);
-                dateTimeFormat = sysUIFormat;
-                TokenManager.SaveSettings("DateTimeFormat", sysUIFormat);
-            }
-            var tokenDate = DateTime.ParseExact(tokenTable.Rows[0]["time_get"].ToString(), dateTimeFormat, null);
-            TimeSpan timeDiff = Convert.ToDateTime(DateTime.Now, enUS) - Convert.ToDateTime(tokenDate, enUS);
-            if (timeDiff.TotalSeconds > 3000)
-            {
-                client = new RestClient(IdentityBaseURL);
-                client.Timeout = 30000;
-                var tokenRequest = new RestRequest(Method.POST);
-                tokenRequest.AddHeader("Content-Type", "application/x-www-form-urlencoded");
-                tokenRequest.AddParameter("grant_type", "client_credentials");
-                tokenRequest.AddParameter("client_id", ClientId);
-                tokenRequest.AddParameter("client_secret", ClientSecret);
-                tokenRequest.AddParameter("scope", "InvoicingAPI");
-                IRestResponse tokenResponse = client.Execute(tokenRequest);
-                if (tokenResponse.StatusCode != HttpStatusCode.OK)
-                {
-                    if (tryCount < 3)
-                    {
-                        goto GetToken;
-                    }
-                    else
-                    {
-                        return "CANNOT";
-                    }
-                }
-                tryCount = 0;
-                TokenManager.SaveToken(Token.FromJson(tokenResponse.Content).AccessToken, DateTime.Now.ToString(), companyCode, environmentId);
-                TokenManager.SaveSettings("DateTimeFormat", sysUIFormat);
-                return Token.FromJson(tokenResponse.Content).AccessToken;
-            }
-            return tokenTable.Rows[0]["str_token"].ToString();
-        }
-
-
-        private string? GetToken(string companyCode, string environmentId)
-        {
-        GetToken:
-            tryCount++;
-            tokenTable = TokenManager.GetToken(companyCode, environmentId);
-            if (tokenTable.Rows.Count != 1)
-            {
-                return "CANNOT";
-            }
-
-            IdentityBaseURL = tokenTable.Rows[0]["EnvTokenUrl"].ToString();
-            SystemAPIBaseURL = tokenTable.Rows[0]["EnvInvoicingUrl"].ToString();
-            ClientId = tokenTable.Rows[0]["ClientId"].ToString();
-            ClientSecret = tokenTable.Rows[0]["ClientSecret"].ToString();
-            var dateTimeFormat = TokenManager.GetSettings("DateTimeFormat").ToString();
-            if (tokenTable.Rows[0]["time_get"].Equals(DBNull.Value))
-            {
-                tokenTable.Rows[0]["time_get"] = DateTime.Now.AddDays(-1);
-                dateTimeFormat = sysUIFormat;
-                TokenManager.SaveSettings("DateTimeFormat", sysUIFormat);
-            }
-            var tokenDate = DateTime.ParseExact(tokenTable.Rows[0]["time_get"].ToString(), dateTimeFormat, null);
-            TimeSpan timeDiff = Convert.ToDateTime(DateTime.Now, enUS) - Convert.ToDateTime(tokenDate, enUS);
-            if (timeDiff.TotalSeconds > 3000)
-            {
-                client = new RestClient(IdentityBaseURL);
-                client.Timeout = 30000;
-                var tokenRequest = new RestRequest(Method.POST);
-                tokenRequest.AddHeader("Content-Type", "application/x-www-form-urlencoded");
-                tokenRequest.AddParameter("grant_type", "client_credentials");
-                tokenRequest.AddParameter("client_id", ClientId);
-                tokenRequest.AddParameter("client_secret", ClientSecret);
-                tokenRequest.AddParameter("scope", "InvoicingAPI");
-                IRestResponse tokenResponse = client.Execute(tokenRequest);
-                if (tokenResponse.StatusCode != HttpStatusCode.OK)
-                {
-                    if (tryCount < 3)
-                    {
-                        goto GetToken;
-                    }
-                    else
-                    {
-                        return "CANNOT";
-                    }
-                }
-                tryCount = 0;
-                TokenManager.SaveToken(Token.FromJson(tokenResponse.Content).AccessToken, DateTime.Now.ToString(), companyCode, environmentId);
-                TokenManager.SaveSettings("DateTimeFormat", sysUIFormat);
-                return Token.FromJson(tokenResponse.Content).AccessToken;
-            }
-            return tokenTable.Rows[0]["str_token"].ToString();
+            return TokenHelper.GetToken(companyCode, environmentId, out var tokenSettings, sysUIFormat) ?? "CANNOT";
         }
 
     }
