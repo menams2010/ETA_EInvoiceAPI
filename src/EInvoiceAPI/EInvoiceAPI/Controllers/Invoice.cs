@@ -11,7 +11,6 @@ using Org.BouncyCastle.Asn1;
 using Org.BouncyCastle.Asn1.Ess;
 using RestSharp;
 using System.Data;
-using System.Diagnostics.Eventing.Reader;
 using System.Dynamic;
 using System.Globalization;
 using System.Net;
@@ -193,11 +192,35 @@ namespace EInvoiceAPI.Controllers
 
             client.BaseUrl = new Uri(SystemAPIBaseURL + "documentsubmissions");
             client.Timeout = 30000;
-            var request = new RestRequest(Method.POST);
-            request.AddHeader("Content-Type", "application/json");
-            request.AddHeader("Authorization", "Bearer " + token);
-            request.AddParameter("application/json", signedInvoice, ParameterType.RequestBody);
-            IRestResponse response = client.Execute(request);
+
+            int maxRetries = 3;
+            int attempt = 0;
+            IRestResponse? response = null;
+
+            while (attempt < maxRetries)
+            {
+                attempt++;
+                var request = new RestRequest(Method.POST);
+                request.AddHeader("Content-Type", "application/json");
+                request.AddHeader("Authorization", "Bearer " + token);
+                request.AddParameter("application/json", signedInvoice, ParameterType.RequestBody);
+
+                response = client.Execute(request);
+
+                if ((int)response.StatusCode == 0 || response.StatusCode == (HttpStatusCode)429)
+                {
+                    await Task.Delay(2000 * attempt);
+                    continue;
+                }
+
+                break;
+            }
+
+            if (response == null || (int)response.StatusCode == 0)
+            {
+                return StatusCode(500, "Error: Received status code 0 with an empty response body from the API.");
+            }
+
             if (response.StatusCode == HttpStatusCode.Unauthorized)
             {
                 goto GetToken;
@@ -211,6 +234,7 @@ namespace EInvoiceAPI.Controllers
         {
             companyCode = Request.Headers["CompanyCode"];
             environmentId = Request.Headers["EnvironmentId"];
+
         GetToken:
             var token = TokenHelper.GetToken(companyCode, environmentId, out var tokenSettings, sysUIFormat);
             if (token == "CANNOT")
@@ -223,23 +247,41 @@ namespace EInvoiceAPI.Controllers
 
             client.BaseUrl = new Uri(SystemAPIBaseURL + "documentSubmissions/" + submitionUUID);
             client.Timeout = 30000;
-            var request = new RestRequest(Method.GET);
-            request.AddHeader("PageSize", "10");
-            request.AddHeader("PageNo", "1");
-            request.AddHeader("Authorization", "Bearer " + token);
-            IRestResponse response = client.Execute(request);
-            if (response.StatusCode == HttpStatusCode.OK)
+
+            int maxRetries = 3;
+            int attempt = 0;
+            IRestResponse? response = null;
+
+            while (attempt < maxRetries)
             {
-                return Ok(response.Content);
+                attempt++;
+                var request = new RestRequest(Method.GET);
+                request.AddHeader("PageSize", "10");
+                request.AddHeader("PageNo", "1");
+                request.AddHeader("Authorization", "Bearer " + token);
+
+                response = client.Execute(request);
+
+                if ((int)response.StatusCode == 0 || response.StatusCode == (HttpStatusCode)429)
+                {
+                    Thread.Sleep(2000 * attempt);
+                    continue;
+                }
+
+                break;
             }
-            else if (response.StatusCode == HttpStatusCode.Unauthorized)
+
+            if (response == null || (int)response.StatusCode == 0)
+            {
+                return StatusCode(500, "Error: Received status code 0 with an empty response body from the API.");
+            }
+
+            if (response.StatusCode == HttpStatusCode.Unauthorized)
             {
                 goto GetToken;
             }
-            else
-            {
-                return BadRequest(response.Content);
-            }
+
+            return StatusCode(Convert.ToInt32(response.StatusCode), response.Content);
         }
 
         [HttpGet("[action]")]
@@ -248,6 +290,7 @@ namespace EInvoiceAPI.Controllers
         {
             companyCode = Request.Headers["CompanyCode"].ToString();
             environmentId = Request.Headers["EnvironmentId"].ToString();
+
         GetToken:
             var token = TokenHelper.GetToken(companyCode, environmentId, out var tokenSettings, sysUIFormat);
             if (token == "CANNOT")
@@ -260,18 +303,39 @@ namespace EInvoiceAPI.Controllers
 
             client.BaseUrl = new Uri(SystemAPIBaseURL + "documents/" + documentUUID + "/details");
             client.Timeout = 30000;
-            var request = new RestRequest(Method.GET);
-            request.AddHeader("Authorization", "Bearer " + token);
-            IRestResponse response = client.Execute(request);
+
+            int maxRetries = 3;
+            int attempt = 0;
+            IRestResponse? response = null;
+
+            while (attempt < maxRetries)
+            {
+                attempt++;
+                var request = new RestRequest(Method.GET);
+                request.AddHeader("Authorization", "Bearer " + token);
+                response = client.Execute(request);
+
+                if ((int)response.StatusCode == 0 || response.StatusCode == (HttpStatusCode)429)
+                {
+                    Thread.Sleep(2000 * attempt);
+                    continue;
+                }
+
+                break;
+            }
+
+            if (response == null || (int)response.StatusCode == 0)
+            {
+                return StatusCode(500, "Error: Received status code 0 with an empty response body from the API.");
+            }
+
             if (response.StatusCode == HttpStatusCode.Unauthorized)
             {
                 goto GetToken;
             }
-            else
-            {
-                var res = JsonConvert.DeserializeObject<ExpandoObject>(response.Content, InvoiceHelper.JsonSettings);
-                return StatusCode(Convert.ToInt32(response.StatusCode), res);
-            }
+
+            var res = JsonConvert.DeserializeObject<ExpandoObject>(response.Content, InvoiceHelper.JsonSettings);
+            return StatusCode(Convert.ToInt32(response.StatusCode), res);
         }
 
         [HttpGet("[action]")]
@@ -279,6 +343,7 @@ namespace EInvoiceAPI.Controllers
         {
             companyCode = Request.Headers["CompanyCode"].ToString();
             environmentId = Request.Headers["EnvironmentId"].ToString();
+
         GetToken:
             var token = TokenHelper.GetToken(companyCode, environmentId, out var tokenSettings, sysUIFormat);
             if (token == "CANNOT")
@@ -291,46 +356,58 @@ namespace EInvoiceAPI.Controllers
 
             client.BaseUrl = new Uri(SystemAPIBaseURL + "documents/" + documentUUID + "/details");
             client.Timeout = 30000;
-            var request = new RestRequest(Method.GET);
-            request.AddHeader("Authorization", "Bearer " + token);
-            IRestResponse response = client.Execute(request);
-            if (response.StatusCode == HttpStatusCode.OK)
+
+            int maxRetries = 3;
+            int attempt = 0;
+            IRestResponse? response = null;
+
+            while (attempt < maxRetries)
             {
-                var ValidationResults = InvoiceValidationResult.FromJson(response.Content).ValidationResults;
-                StringBuilder stringBuilder = new StringBuilder();
-                foreach (var item in ValidationResults.ValidationSteps)
+                attempt++;
+                var request = new RestRequest(Method.GET);
+                request.AddHeader("Authorization", "Bearer " + token);
+
+                response = client.Execute(request);
+
+                if ((int)response.StatusCode == 0 || response.StatusCode == (HttpStatusCode)429)
                 {
-                    if (item.Error != null)
-                    {
-                        if (item.Error.ErrorError != null)
-                        {
-                            if (!stringBuilder.ToString().Contains(item.Error.ErrorError))
-                            {
-                                stringBuilder.AppendLine(item.Error.ErrorError);
-                            }
-                        }
-                        foreach (var err in item.Error.InnerError)
-                        {
-                            if (item.Error.ErrorError != null)
-                            {
-                                if (!stringBuilder.ToString().Contains(err.ErrorError))
-                                {
-                                    stringBuilder.AppendLine(err.ErrorError);
-                                }
-                            }
-                        }
-                    }
+                    Thread.Sleep(2000 * attempt);
+                    continue;
                 }
-                return Ok(stringBuilder.ToString());
+
+                break;
             }
-            else if (response.StatusCode == HttpStatusCode.Unauthorized)
+
+            if (response == null || (int)response.StatusCode == 0)
+            {
+                return StatusCode(500, "Error: Received status code 0 with an empty response body from the API.");
+            }
+
+            if (response.StatusCode == HttpStatusCode.Unauthorized)
             {
                 goto GetToken;
             }
-            else
+
+            var ValidationResults = InvoiceValidationResult.FromJson(response.Content).ValidationResults;
+            StringBuilder stringBuilder = new StringBuilder();
+            foreach (var item in ValidationResults.ValidationSteps)
             {
-                return BadRequest(response.Content);
+                if (item.Error != null)
+                {
+                    if (item.Error.ErrorError != null && !stringBuilder.ToString().Contains(item.Error.ErrorError))
+                    {
+                        stringBuilder.AppendLine(item.Error.ErrorError);
+                    }
+                    foreach (var err in item.Error.InnerError)
+                    {
+                        if (err.ErrorError != null && !stringBuilder.ToString().Contains(err.ErrorError))
+                        {
+                            stringBuilder.AppendLine(err.ErrorError);
+                        }
+                    }
+                }
             }
+            return Ok(stringBuilder.ToString());
         }
 
         [HttpGet("[action]")]
@@ -338,6 +415,7 @@ namespace EInvoiceAPI.Controllers
         {
             companyCode = Request.Headers["CompanyCode"].ToString();
             environmentId = Request.Headers["EnvironmentId"].ToString();
+
         GetToken:
             var token = TokenHelper.GetToken(companyCode, environmentId, out var tokenSettings, sysUIFormat);
             if (token == "CANNOT")
@@ -349,10 +427,37 @@ namespace EInvoiceAPI.Controllers
             SystemAPIBaseURL = tokenSettings?.EnvInvoicingUrl;
 
             client = new RestClient();
-            var request = new RestRequest("https://api.invoicing.eta.gov.eg/api/v1/documents/" + invoiceDocumentNo + "/details");
-            request.Method = Method.GET;
-            request.AddHeader("Authorization", "Bearer " + token);
-            IRestResponse response = client.Execute(request);
+
+            int maxRetries = 3;
+            int attempt = 0;
+            IRestResponse? response = null;
+
+            while (attempt < maxRetries)
+            {
+                attempt++;
+                var request = new RestRequest("https://api.invoicing.eta.gov.eg/api/v1/documents/" + invoiceDocumentNo + "/details");
+                request.Method = Method.GET;
+                request.AddHeader("Authorization", "Bearer " + token);
+                response = client.Execute(request);
+
+                if ((int)response.StatusCode == 0 || response.StatusCode == (HttpStatusCode)429)
+                {
+                    Thread.Sleep(2000 * attempt);
+                    continue;
+                }
+
+                break;
+            }
+
+            if (response == null || (int)response.StatusCode == 0)
+            {
+                return StatusCode(500, "Error: Received status code 0 with an empty response body from the API.");
+            }
+
+            if (response.StatusCode == HttpStatusCode.Unauthorized)
+            {
+                goto GetToken;
+            }
 
             if (response.StatusCode == HttpStatusCode.OK)
             {
@@ -362,16 +467,11 @@ namespace EInvoiceAPI.Controllers
                     if (item.StepId == "8" && item.Status == "Invalid")
                     {
                         string vUUID = item.Error.InnerError[0].ErrorError;
-                        vUUID = vUUID.Substring(vUUID.IndexOf(":") + 1);
+                        vUUID = vUUID[(vUUID.IndexOf(":") + 1)..];
                         return StatusCode((int)HttpStatusCode.OK, vUUID.Trim());
                     }
                 }
                 return StatusCode((int)HttpStatusCode.NotFound, "No Valid Documents");
-            }
-
-            if (response.StatusCode == HttpStatusCode.Unauthorized)
-            {
-                goto GetToken;
             }
 
             return StatusCode(Convert.ToInt32(response.StatusCode), response.Content);
@@ -383,6 +483,7 @@ namespace EInvoiceAPI.Controllers
             companyCode = Request.Headers["CompanyCode"].ToString();
             environmentId = Request.Headers["EnvironmentId"].ToString();
             long pageNo = 1;
+
         GetToken:
             var token = TokenHelper.GetToken(companyCode, environmentId, out var tokenSettings, sysUIFormat);
             if (token == "CANNOT")
@@ -394,19 +495,54 @@ namespace EInvoiceAPI.Controllers
             SystemAPIBaseURL = tokenSettings?.EnvInvoicingUrl;
 
         ReadInvoices:
-            var request = new RestRequest(SystemAPIBaseURL + "documents/recent?PageSize=100&PageNo=" + pageNo + "&direction=received&issuerId=" + vendorVatRegNo);
-            request.Method = Method.GET;
-            request.AddHeader("Authorization", "Bearer " + token);
-            IRestResponse response = client.Execute(request);
+            int maxRetries = 3;
+            int attempt = 0;
+            IRestResponse? response = null;
+
+            while (attempt < maxRetries)
+            {
+                attempt++;
+                var request = new RestRequest(SystemAPIBaseURL + "documents/recent?PageSize=100&PageNo=" + pageNo
+                                              + "&direction=received&issuerId=" + vendorVatRegNo);
+                request.Method = Method.GET;
+                request.AddHeader("Authorization", "Bearer " + token);
+
+                response = client.Execute(request);
+
+                if ((int)response.StatusCode == 0 || response.StatusCode == (HttpStatusCode)429)
+                {
+                    Thread.Sleep(2000 * attempt);
+                    continue;
+                }
+
+                break;
+            }
+
+            if (response == null || (int)response.StatusCode == 0)
+            {
+                return StatusCode(500, "Error: Received status code 0 with an empty response body from the API.");
+            }
+
+            if (response.StatusCode == HttpStatusCode.Unauthorized)
+            {
+                goto GetToken;
+            }
+
             if (response.StatusCode == HttpStatusCode.OK)
             {
                 var recentDocuments = RecentDocument.FromJson(response.Content);
                 var pagesCount = recentDocuments.Metadata.TotalPages;
+
                 if (recentDocuments.Result.Length > 0)
                 {
-                    if (recentDocuments.Result.Where(item => item.InternalId == vendorDocumentNo).ToArray().Length > 0)
+                    var matchingDocs = recentDocuments.Result
+                        .Where(item => item.InternalId == vendorDocumentNo)
+                        .OrderByDescending(item => item.DateTimeReceived)
+                        .ToArray();
+
+                    if (matchingDocs.Length > 0)
                     {
-                        return Ok(recentDocuments.Result.Where(item => item.InternalId == vendorDocumentNo).OrderByDescending(item => item.DateTimeReceived).ToArray()[0].Uuid);
+                        return Ok(matchingDocs[0].Uuid);
                     }
 
                     if (pageNo < pagesCount)
@@ -415,15 +551,10 @@ namespace EInvoiceAPI.Controllers
                         goto ReadInvoices;
                     }
                     return BadRequest("No Documents found");
-
                 }
-
                 return BadRequest("No Documents found");
             }
-            if (response.StatusCode == HttpStatusCode.Unauthorized)
-            {
-                goto GetToken;
-            }
+
             return StatusCode(Convert.ToInt32(response.StatusCode), response.Content);
         }
 
@@ -432,6 +563,7 @@ namespace EInvoiceAPI.Controllers
         {
             companyCode = Request.Headers["CompanyCode"].ToString();
             environmentId = Request.Headers["EnvironmentId"].ToString();
+
         GetToken:
             var token = TokenHelper.GetToken(companyCode, environmentId, out var tokenSettings, sysUIFormat);
             if (token == "CANNOT")
@@ -444,28 +576,46 @@ namespace EInvoiceAPI.Controllers
 
             client.BaseUrl = new Uri(SystemAPIBaseURL + "documents/state/" + documentUUID + "/state");
             client.Timeout = 30000;
-            var request = new RestRequest(Method.PUT);
-            request.AddHeader("Content-Type", "application/json");
-            request.AddHeader("Authorization", "Bearer " + token);
-            request.AddParameter("application/json", "{\"status\":\"cancelled\",\"reason\":\"Wrong invoice details\"}", ParameterType.RequestBody);
-            IRestResponse response = client.Execute(request);
-            if (response.StatusCode == HttpStatusCode.OK)
+
+            int maxRetries = 3;
+            int attempt = 0;
+            IRestResponse? response = null;
+
+            while (attempt < maxRetries)
             {
-                return Ok(response.Content);
+                attempt++;
+                var request = new RestRequest(Method.PUT);
+                request.AddHeader("Content-Type", "application/json");
+                request.AddHeader("Authorization", "Bearer " + token);
+                request.AddParameter("application/json", "{\"status\":\"cancelled\",\"reason\":\"Wrong invoice details\"}", ParameterType.RequestBody);
+
+                response = client.Execute(request);
+
+                if ((int)response.StatusCode == 0 || response.StatusCode == (HttpStatusCode)429)
+                {
+                    Thread.Sleep(2000 * attempt);
+                    continue;
+                }
+
+                break;
             }
-            else if (response.StatusCode == HttpStatusCode.Unauthorized)
+
+            if (response == null || (int)response.StatusCode == 0)
+            {
+                return StatusCode(500, "Error: Received status code 0 with an empty response body from the API.");
+            }
+
+            if (response.StatusCode == HttpStatusCode.Unauthorized)
             {
                 goto GetToken;
             }
-            else if (response.StatusCode == HttpStatusCode.BadRequest)
+
+            if (response.StatusCode == HttpStatusCode.BadRequest)
             {
                 return BadRequest(response.Content);
             }
-            else
-            {
-                return Forbid(response.Content);
-            }
 
+            return Forbid(response.Content);
         }
 
         private object GetSlotLock(string slotSerial)
