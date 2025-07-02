@@ -832,6 +832,8 @@ namespace EInvoiceAPI.Controllers
             }
             return attributes;
         }
+
+        [HttpGet("[action]")]
         public string ApiToken(string companyCode, string environmentId)
         {
             return TokenHelper.GetToken(companyCode, environmentId, out var tokenSettings, sysUIFormat) ?? "CANNOT";
