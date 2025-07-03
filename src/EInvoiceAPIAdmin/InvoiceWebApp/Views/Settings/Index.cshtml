@@ -1,0 +1,152 @@
+﻿@model List<InvoiceWebApp.Models.Settings>
+@{
+    ViewData["Title"] = "Settings";
+}
+<h2>Settings</h2>
+
+<div class="mb-2 d-flex" style="max-width:350px;">
+    <input id="settingsSearchBox" type="text" class="form-control me-2" placeholder="Search settings..." />
+</div>
+
+<div class="mb-2">
+    <button class="btn btn-primary" data-bs-toggle="modal" data-bs-target="#addModal">Add</button>
+    <button class="btn btn-secondary" data-bs-toggle="modal" data-bs-target="#importModal">Import</button>
+    <button class="btn btn-success" data-bs-toggle="modal" data-bs-target="#exportModal">Export</button>
+</div>
+<table class="table table-bordered table-hover" id="settingsTable">
+    <thead>
+        <tr>
+            <th>Id</th>
+            <th>SettingName</th>
+            <th>SettingValue</th>
+            <th>Actions</th>
+        </tr>
+    </thead>
+    <tbody>
+        @foreach (var item in Model)
+        {
+            <tr>
+                <td>@item.Id</td>
+                <td>@item.SettingName</td>
+                <td>@item.SettingValue</td>
+                <td>
+                    <button class="btn btn-warning btn-sm" data-bs-toggle="modal" data-bs-target="#editModal-@item.Id">Edit</button>
+                    <form asp-action="Delete" method="post" class="d-inline">
+                        <input type="hidden" name="id" value="@item.Id" />
+                        <button type="submit" class="btn btn-danger btn-sm" onclick="return confirm('Are you sure you want to delete this setting?')">Delete</button>
+                    </form>
+                </td>
+            </tr>
+            <!-- Edit Modal -->
+            <div class="modal fade" id="editModal-@item.Id" tabindex="-1">
+                <div class="modal-dialog modal-dialog-centered">
+                    <div class="modal-content">
+                        <form asp-action="Edit" method="post">
+                            <div class="modal-header">
+                                <h5 class="modal-title">Edit Setting</h5>
+                                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+                            </div>
+                            <div class="modal-body">
+                                <input type="hidden" name="Id" value="@item.Id" />
+                                <div class="mb-3">
+                                    <label>Setting Name</label>
+                                    <input class="form-control" name="SettingName" value="@item.SettingName" required />
+                                </div>
+                                <div class="mb-3">
+                                    <label>Setting Value</label>
+                                    <input class="form-control" name="SettingValue" value="@item.SettingValue" />
+                                </div>
+                            </div>
+                            <div class="modal-footer">
+                                <button type="submit" class="btn btn-warning">Save</button>
+                                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
+                            </div>
+                        </form>
+                    </div>
+                </div>
+            </div>
+        }
+    </tbody>
+</table>
+
+<!-- Add Modal -->
+<div class="modal fade" id="addModal" tabindex="-1">
+    <div class="modal-dialog modal-dialog-centered">
+        <div class="modal-content">
+            <form asp-action="Create" method="post">
+                <div class="modal-header">
+                    <h5 class="modal-title">Add Setting</h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+                </div>
+                <div class="modal-body">
+                    <div class="mb-3">
+                        <label>Setting Name</label>
+                        <input class="form-control" name="SettingName" required />
+                    </div>
+                    <div class="mb-3">
+                        <label>Setting Value</label>
+                        <input class="form-control" name="SettingValue" />
+                    </div>
+                </div>
+                <div class="modal-footer">
+                    <button type="submit" class="btn btn-primary">Add</button>
+                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
+                </div>
+            </form>
+        </div>
+    </div>
+</div>
+
+<!-- Import Modal -->
+<div class="modal fade" id="importModal" tabindex="-1">
+    <div class="modal-dialog modal-dialog-centered">
+        <div class="modal-content">
+            <form asp-action="Import" method="post" enctype="multipart/form-data">
+                <div class="modal-header">
+                    <h5 class="modal-title">Import Settings (JSON)</h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+                </div>
+                <div class="modal-body">
+                    <input type="file" name="jsonFile" accept=".json" required class="form-control" />
+                </div>
+                <div class="modal-footer">
+                    <button type="submit" class="btn btn-success">Import</button>
+                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
+                </div>
+            </form>
+        </div>
+    </div>
+</div>
+
+<!-- Export Modal -->
+<div class="modal fade" id="exportModal" tabindex="-1">
+    <div class="modal-dialog modal-dialog-centered">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title">Export Settings</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body">
+                <a asp-action="Export" class="btn btn-secondary w-100">Download JSON</a>
+            </div>
+        </div>
+    </div>
+</div>
+
+@section Scripts {
+<script>
+document.addEventListener('DOMContentLoaded', function () {
+    const searchBox = document.getElementById('settingsSearchBox');
+    const table = document.getElementById('settingsTable');
+    if (!searchBox || !table) return;
+    searchBox.addEventListener('input', function () {
+        const filter = searchBox.value.toLowerCase();
+        const rows = table.querySelectorAll('tbody tr');
+        rows.forEach(row => {
+            const text = row.textContent.toLowerCase();
+            row.style.display = text.includes(filter) ? '' : 'none';
+        });
+    });
+});
+</script>
+}

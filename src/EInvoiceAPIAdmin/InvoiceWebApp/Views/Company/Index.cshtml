@@ -1,0 +1,601 @@
+﻿@model List<InvoiceWebApp.Models.Company>
+@{
+    ViewData["Title"] = "Companies";
+}
+@section css{
+    <style>
+        .cert-modal-wide {
+            max-width: 1200px; /* Adjust as needed */
+            width: 90vw;
+        }
+        /* Make the certificate table scrollable inside the modal */
+        #certSelectModal .modal-body {
+            padding: 0.5rem 1rem;
+        }
+        #certSelectModal .table-responsive {
+            max-height: 400px; /* Adjust as needed */
+            overflow-y: auto;
+        }
+        #certSelectModal table {
+            margin-bottom: 0;
+        }
+        /* Freeze the Actions column */
+        #certSelectModal th:first-child,
+        #certSelectModal td:first-child {
+            position: sticky;
+            left: 0;
+            background: #fff;
+            z-index: 2;
+        }
+        #certSelectModal th:first-child {
+            z-index: 3; /* Ensure header is above body cells */
+        }
+    </style>
+}
+<h2>Companies</h2>
+
+<div class="mb-2 d-flex" style="max-width:350px;">
+    <input id="companySearchBox" type="text" class="form-control me-2" placeholder="Search companies..." />
+</div>
+
+<div class="mb-2">
+    <button class="btn btn-primary" data-bs-toggle="modal" data-bs-target="#addModal">Add</button>
+    <button class="btn btn-secondary" data-bs-toggle="modal" data-bs-target="#importModal">Import</button>
+    <button class="btn btn-success" data-bs-toggle="modal" data-bs-target="#exportModal">Export</button>
+</div>
+
+<table class="table table-bordered table-hover" id="companyTable">
+    <thead>
+        <tr>
+            <th>Id</th>
+            <th>CompanyCode</th>
+            <th>CompanyName</th>
+            <th>TokenSerial</th>
+            <th>TokenPin</th>
+            <th>CertSerialNum</th>
+            <th>UseXMLTOJSON</th>
+            <th>Actions</th>
+        </tr>
+    </thead>
+    <tbody>
+        @foreach (var item in Model)
+        {
+            <tr>
+                <td>@item.Id</td>
+                <td>@item.CompanyCode</td>
+                <td>@item.CompanyName</td>
+                <td>@item.TokenSerial</td>
+                <td>@item.TokenPin</td>
+                <td>@item.CertSerialNum</td>
+                <td>@item.UseXMLTOJSON</td>
+                <td>
+                    <button class="btn btn-warning btn-sm" data-bs-toggle="modal" data-bs-target="#editModal-@item.Id">Edit</button>
+                    <form asp-action="Delete" method="post" class="d-inline">
+                        <input type="hidden" name="id" value="@item.Id" />
+                        <button type="submit" class="btn btn-danger btn-sm" onclick="return confirm('Are you sure you want to delete this company?')">Delete</button>
+                    </form>
+                </td>
+            </tr>
+            <!-- Edit Modal for Each Item -->
+            <div class="modal fade" id="editModal-@item.Id" tabindex="-1">
+                <div class="modal-dialog modal-dialog-centered">
+                    <div class="modal-content">
+                        <form asp-action="Edit" method="post">
+                            <div class="modal-header">
+                                <h5 class="modal-title">Edit Company</h5>
+                                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+                            </div>
+                            <div class="modal-body">
+                                <input type="hidden" name="Id" value="@item.Id" />
+                                <div class="mb-3">
+                                    <label>Company Code</label>
+                                    <input class="form-control" name="CompanyCode" value="@item.CompanyCode" />
+                                </div>
+                                <div class="mb-3">
+                                    <label>Company Name</label>
+                                    <input class="form-control" name="CompanyName" value="@item.CompanyName" />
+                                </div>
+                                <div class="mb-3">
+                                    <label>Token Serial</label>
+                                    <div class="input-group">
+                                        <input class="form-control" name="TokenSerial" id="editTokenSerial-@item.Id" value="@item.TokenSerial" />
+                                        <button type="button" class="btn btn-outline-secondary openEditTokenSerialModalBtn" data-edit-id="@item.Id">Select Token Serial</button>
+                                    </div>
+                                </div>
+                                <div class="mb-3">
+                                    <label>Token Pin</label>
+                                    <input class="form-control" name="TokenPin" value="@item.TokenPin" />
+                                </div>
+                                <div class="mb-3">
+                                    <label>Cert Serial Num</label>
+                                    <div class="input-group">
+                                        <input class="form-control" name="CertSerialNum" id="editCertSerialNum-@item.Id" value="@item.CertSerialNum" readonly />
+                                        <button type="button" class="btn btn-outline-secondary openEditCertModalBtn" data-edit-id="@item.Id">Select Certificate</button>
+                                    </div>
+                                </div>
+                                <div class="mb-3">
+                                    <label>Use XML to JSON Converter</label>
+                                    <input class="form-check-input" name="UseXMLTOJSON" type="checkbox" value="true" @(item.UseXMLTOJSON.ToLower() == "true" ? "checked" : "") />
+                                </div>
+                            </div>
+                            <div class="modal-footer">
+                                <button type="submit" class="btn btn-warning">Save</button>
+                                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
+                            </div>
+                        </form>
+                    </div>
+                </div>
+            </div>
+        }
+    </tbody>
+</table>
+
+<!-- Add Modal -->
+<div class="modal fade" id="addModal" tabindex="-1">
+    <div class="modal-dialog modal-dialog-centered">
+        <div class="modal-content">
+            <form asp-action="Create" method="post">
+                <div class="modal-header">
+                    <h5 class="modal-title">Add Company</h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+                </div>
+                <div class="modal-body">
+                    <div class="mb-3">
+                        <label>Company Code</label>
+                        <input class="form-control" name="CompanyCode" />
+                    </div>
+                    <div class="mb-3">
+                        <label>Company Name</label>
+                        <input class="form-control" name="CompanyName" />
+                    </div>
+                    <div class="mb-3">
+                        <label>Token Serial</label>
+                        <div class="input-group">
+                            <input class="form-control" name="TokenSerial" id="selectedTokenSerial" />
+                            <button type="button" class="btn btn-outline-secondary" id="openTokenSerialModalBtn">Select Token Serial</button>
+                        </div>
+                    </div>
+                    <div class="mb-3">
+                        <label>Token Pin</label>
+                        <input class="form-control" name="TokenPin" />
+                    </div>
+                    <div class="mb-3">
+                        <label>Cert Serial Num</label>
+                        <div class="input-group">
+                            <input class="form-control" name="CertSerialNum" id="selectedCertSerialNum" readonly />
+                            <button type="button" class="btn btn-outline-secondary" id="openCertModalBtn">Select Certificate</button>
+                        </div>
+                    </div>
+                    <div class="mb-3">
+                        <label>Use XML to JSON Converter</label>
+                        <input class="form-check-input" name="UseXMLTOJSON" type="checkbox" value="true" />
+                    </div>
+                </div>
+                <div class="modal-footer">
+                    <button type="submit" class="btn btn-primary">Add</button>
+                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
+                </div>
+            </form>
+        </div>
+    </div>
+</div>
+
+<!-- Import Modal -->
+<div class="modal fade" id="importModal" tabindex="-1">
+    <div class="modal-dialog modal-dialog-centered">
+        <div class="modal-content">
+            <form asp-action="Import" method="post" enctype="multipart/form-data">
+                <div class="modal-header">
+                    <h5 class="modal-title">Import Companies (JSON)</h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+                </div>
+                <div class="modal-body">
+                    <input type="file" name="jsonFile" accept=".json" required class="form-control" />
+                </div>
+                <div class="modal-footer">
+                    <button type="submit" class="btn btn-success">Import</button>
+                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
+                </div>
+            </form>
+        </div>
+    </div>
+</div>
+
+<!-- Export Modal -->
+<div class="modal fade" id="exportModal" tabindex="-1">
+    <div class="modal-dialog modal-dialog-centered">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title">Export Companies</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body">
+                <a asp-action="Export" class="btn btn-secondary w-100">Download JSON</a>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Certificate Selection Modal -->
+<div class="modal fade" id="certSelectModal" tabindex="-1">
+    <div class="modal-dialog modal-lg modal-dialog-centered cert-modal-wide">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title">Select User Certificate</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body">
+                <div id="certLoading" style="display:none;">Loading certificates...</div>
+                <div id="certError" class="text-danger" style="display:none;">Failed to load certificates.</div>
+                <div class="table-responsive">
+                    <table class="table table-bordered table-hover" id="certTable">
+                        <thead>
+                            <tr>
+                                <th>Actions</th>
+                                <th>Serial Number</th>
+                                <th>Subject Name</th>
+                                <th>Subject</th>
+                                <th>Issuer Name</th>
+                                <th>Issuer</th>
+                                <th>Issued Date</th>
+                                <th>Expiry Date</th>
+                                <th>Version</th>
+                                <th>Friendly Name</th>
+                            </tr>
+                        </thead>
+                        <tbody id="certTableBody">
+                            <!-- Certificate rows will be loaded here -->
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Token Serial Selection Modal -->
+<div class="modal fade" id="tokenSerialSelectModal" tabindex="-1">
+    <div class="modal-dialog modal-lg modal-dialog-centered">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title">Select Token Serial</h5>
+                <button type="button" class="btn btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body">
+                <div id="tokenLoading" style="display:none;">Loading tokens...</div>
+                <div id="tokenError" class="text-danger" style="display:none;">Failed to load tokens.</div>
+                <div class="table-responsive">
+                    <table class="table table-bordered table-hover" id="tokensTable">
+                        <thead>
+                            <tr>
+                                <th>Actions</th>
+                                <th>Slot ID</th>
+                                <th>Slot Label</th>
+                                <th>Serial Number</th>
+                            </tr>
+                        </thead>
+                        <tbody id="tokensTableBody">
+                            <!-- Token rows will be loaded here -->
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+@section Scripts {
+    <script>
+        // Track which input to update (Add or Edit modal) for TokenSerial
+        let tokenSerialWasSelected = false;
+        let tokenSerialTargetInputId = 'selectedTokenSerial'; // Default to Add modal
+
+        // TokenSerial selection handler
+        function selectTokenSerial(tokenSerial) {
+            const input = document.getElementById(tokenSerialTargetInputId);
+            if (input) {
+                input.value = tokenSerial;
+            }
+            tokenSerialWasSelected = true;
+            var tokenSerialModal = bootstrap.Modal.getInstance(document.getElementById('tokenSerialSelectModal'));
+            tokenSerialModal.hide();
+        }
+
+        document.addEventListener('DOMContentLoaded', function () {
+            // For Add modal
+            var openTokenSerialModalBtn = document.getElementById('openTokenSerialModalBtn');
+            if (openTokenSerialModalBtn) {
+                openTokenSerialModalBtn.addEventListener('click', function () {
+                    tokenSerialTargetInputId = 'selectedTokenSerial';
+                    var tokenSerialModal = new bootstrap.Modal(document.getElementById('tokenSerialSelectModal'), {
+                        backdrop: 'static',
+                        keyboard: false
+                    });
+                    tokenSerialModal.show();
+                });
+            }
+
+            // For Edit modals
+            document.querySelectorAll('.openEditTokenSerialModalBtn').forEach(function (btn) {
+                btn.addEventListener('click', function () {
+                    var editId = btn.getAttribute('data-edit-id');
+                    tokenSerialTargetInputId = 'editTokenSerial-' + editId;
+                    var tokenSerialModal = new bootstrap.Modal(document.getElementById('tokenSerialSelectModal'), {
+                        backdrop: 'static',
+                        keyboard: false
+                    });
+                    tokenSerialModal.show();
+                });
+            });
+
+            // Reset Add Company form when modal is closed
+            var addModalEl = document.getElementById('addModal');
+            if (addModalEl) {
+                addModalEl.addEventListener('hidden.bs.modal', function () {
+                    var tokenSerialInput = document.getElementById('selectedTokenSerial');
+                    if (tokenSerialInput) {
+                        tokenSerialInput.value = '';
+                    }
+                });
+            }
+
+            // Optional: Reset Edit modal form when closed (restores original values)
+            document.querySelectorAll('[id^="editModal-"]').forEach(function (editModalEl) {
+                editModalEl.addEventListener('hidden.bs.modal', function () {
+                    var tokenSerialInput = editModalEl.querySelector('input[name="TokenSerial"]');
+                    if (tokenSerialInput) {
+                        tokenSerialInput.value = tokenSerialInput.defaultValue;
+                    }
+                });
+            });
+        });
+    </script>
+    <script>
+        // Track which input to update (Add or Edit modal) for CertSerialNum
+        let certWasSelected = false;
+        let certTargetInputId = 'selectedCertSerialNum'; // Default to Add modal
+
+        // Store initial CertSerialNum for each edit modal
+        const initialCertSerialNums = {};
+
+        // Certificate selection handler
+        function selectCertificate(serialNum) {
+            const input = document.getElementById(certTargetInputId);
+            if (input) {
+                input.value = serialNum;
+            }
+            certWasSelected = true;
+            var certModal = bootstrap.Modal.getInstance(document.getElementById('certSelectModal'));
+            certModal.hide();
+        }
+
+        document.addEventListener('DOMContentLoaded', function () {
+            // Company table search logic
+            const searchBox = document.getElementById('companySearchBox');
+            const table = document.getElementById('companyTable');
+            if (searchBox && table) {
+                searchBox.addEventListener('input', function () {
+                    const filter = searchBox.value.toLowerCase();
+                    const rows = table.querySelectorAll('tbody tr');
+                    rows.forEach(row => {
+                        const text = row.textContent.toLowerCase();
+                        row.style.display = text.includes(filter) ? '' : 'none';
+                    });
+                });
+            }
+
+            // Stacked modal logic for certificate selection
+            var certModalEl = document.getElementById('certSelectModal');
+            certModalEl.addEventListener('show.bs.modal', function () {
+                document.body.classList.add('modal-open');
+                certWasSelected = false; // Reset flag when modal opens
+                loadCertificates();
+                // Store initial CertSerialNum for edit modals
+                if (certTargetInputId.startsWith('editCertSerialNum-')) {
+                    var certInput = document.getElementById(certTargetInputId);
+                    if (certInput) {
+                        initialCertSerialNums[certInput.id] = certInput.value;
+                    }
+                }
+            });
+
+            certModalEl.addEventListener('hidden.bs.modal', function () {
+                if (!certWasSelected) {
+                    // Restore for edit modals
+                    if (certTargetInputId.startsWith('editCertSerialNum-')) {
+                        var certInput = document.getElementById(certTargetInputId);
+                        if (certInput && initialCertSerialNums[certInput.id] !== undefined) {
+                            certInput.value = initialCertSerialNums[certInput.id];
+                        }
+                    } else {
+                        // For add modal, just clear
+                        var certInput = document.getElementById(certTargetInputId);
+                        if (certInput) {
+                            certInput.value = '';
+                        }
+                    }
+                }
+                if (document.getElementById('addModal').classList.contains('show')) {
+                    document.body.classList.add('modal-open');
+                } else {
+                    document.body.classList.remove('modal-open');
+                }
+            });
+
+            // For Add modal
+            var openCertModalBtn = document.getElementById('openCertModalBtn');
+            if (openCertModalBtn) {
+                openCertModalBtn.addEventListener('click', function () {
+                    certTargetInputId = 'selectedCertSerialNum';
+                    var certModal = new bootstrap.Modal(document.getElementById('certSelectModal'), {
+                        backdrop: 'static',
+                        keyboard: false
+                    });
+                    certModal.show();
+                });
+            }
+
+            // For Edit modals
+            document.querySelectorAll('.openEditCertModalBtn').forEach(function (btn) {
+                btn.addEventListener('click', function () {
+                    var editId = btn.getAttribute('data-edit-id');
+                    certTargetInputId = 'editCertSerialNum-' + editId;
+                    var certModal = new bootstrap.Modal(document.getElementById('certSelectModal'), {
+                        backdrop: 'static',
+                        keyboard: false
+                    });
+                    certModal.show();
+                });
+            });
+
+            // Reset Add Company form when modal is closed
+            var addModalEl = document.getElementById('addModal');
+            if (addModalEl) {
+                addModalEl.addEventListener('hidden.bs.modal', function () {
+                    // Reset the form inside the modal
+                    var form = addModalEl.querySelector('form');
+                    if (form) {
+                        form.reset();
+                    }
+                    // Also clear the certificate serial number field (since it's readonly)
+                    var certInput = document.getElementById('selectedCertSerialNum');
+                    if (certInput) {
+                        certInput.value = '';
+                    }
+                });
+            }
+
+            // Optional: Reset Edit modal form when closed (restores original values)
+            document.querySelectorAll('[id^="editModal-"]').forEach(function (editModalEl) {
+                editModalEl.addEventListener('hidden.bs.modal', function () {
+                    var form = editModalEl.querySelector('form');
+                    if (form) {
+                        form.reset();
+                    }
+                });
+            });
+
+            function loadCertificates() {
+                const tbody = document.getElementById('certTableBody');
+                const loading = document.getElementById('certLoading');
+                const error = document.getElementById('certError');
+                tbody.innerHTML = '';
+                loading.style.display = '';
+                error.style.display = 'none';
+                fetch('@Url.Action("Certificates", "Company")')
+                    .then(response => {
+                        if (!response.ok) throw new Error('Network response was not ok');
+                        return response.json();
+                    })
+                    .then(data => {
+                        loading.style.display = 'none';
+                        if (!data.certificates || !Array.isArray(data.certificates)) {
+                            error.style.display = '';
+                            return;
+                        }
+                        if (data.certificates.length === 0) {
+                            tbody.innerHTML = '<tr><td colspan="10" class="text-center">No certificates found.</td></tr>';
+                            return;
+                        }
+                        data.certificates.forEach(cert => {
+                            const tr = document.createElement('tr');
+                            tr.innerHTML = `
+                                <td>
+                                    <button type="button" class="btn btn-primary btn-sm" onclick="selectCertificate('${cert.serialNumber}')">Select</button>
+                                </td>
+                                <td>${cert.serialNumber || ''}</td>
+                                <td>${cert.subjectName || ''}</td>
+                                <td>${cert.subject || ''}</td>
+                                <td>${cert.issuerName || ''}</td>
+                                <td>${cert.issuer || ''}</td>
+                                <td>${cert.notBefore ? cert.notBefore.split('T')[0] : ''}</td>
+                                <td>${cert.notAfter ? cert.notAfter.split('T')[0] : ''}</td>
+                                <td>${cert.version || ''}</td>
+                                <td>${cert.friendlyName || ''}</td>
+                            `;
+                            tbody.appendChild(tr);
+                        });
+                    })
+                    .catch(() => {
+                        loading.style.display = 'none';
+                        error.style.display = '';
+                    });
+            }
+        });
+    </script>
+    <script>
+        document.addEventListener('DOMContentLoaded', function () {
+            var tokenSerialModalEl = document.getElementById('tokenSerialSelectModal');
+            tokenSerialModalEl.addEventListener('show.bs.modal', function () {
+                loadTokens();
+            });
+
+            function loadTokens() {
+                const tbody = document.getElementById('tokensTableBody');
+                const loading = document.getElementById('tokenLoading');
+                const error = document.getElementById('tokenError');
+                tbody.innerHTML = '';
+                loading.style.display = '';
+                error.style.display = 'none';
+                fetch('@Url.Action("Tokens", "Company")')
+                    .then(response => {
+                        if (!response.ok) throw new Error('Network response was not ok');
+                        return response.json();
+                    })
+                    .then(data => {
+                        loading.style.display = 'none';
+                        if (!data.tokens || !Array.isArray(data.tokens)) {
+                            error.style.display = '';
+                            return;
+                        }
+                        if (data.tokens.length === 0) {
+                            tbody.innerHTML = '<tr><td colspan="4" class="text-center">No tokens found.</td></tr>';
+                            return;
+                        }
+                        data.tokens.forEach(token => {
+                            const tr = document.createElement('tr');
+                            tr.innerHTML = `
+                                <td>
+                                    <button type="button" class="btn btn-primary btn-sm" onclick="selectTokenSerial('${token.SerialNumber}')">Select</button>
+                                </td>
+                                <td>${token.slotId || ''}</td>
+                                <td>${token.slotLabel || ''}</td>
+                                <td>${token.SerialNumber || ''}</td>
+                            `;
+                            tbody.appendChild(tr);
+                        });
+                    })
+                    .catch(() => {
+                        loading.style.display = 'none';
+                        error.style.display = '';
+                    });
+            }
+
+            var addModalEl = document.getElementById('addModal');
+            if (addModalEl) {
+                addModalEl.addEventListener('hidden.bs.modal', function () {
+                    // Reset the form inside the modal
+                    var form = addModalEl.querySelector('form');
+                    if (form) {
+                        form.reset();
+                    }
+                    // Also clear the selected token serial field
+                    var tokenSerialInput = document.getElementById('selectedTokenSerial');
+                    if (tokenSerialInput) {
+                        tokenSerialInput.value = '';
+                    }
+                });
+            }
+            // Optional: Reset Edit modal form when closed (restores original values)
+            document.querySelectorAll('[id^="editModal-"]').forEach(function (editModalEl) {
+                editModalEl.addEventListener('hidden.bs.modal', function () {
+                    var tokenSerialInput = editModalEl.querySelector('input[name="TokenSerial"]');
+                    if (tokenSerialInput) {
+                        tokenSerialInput.value = tokenSerialInput.defaultValue;
+                    }
+                });
+            });
+
+        });
+    </script>
+}
