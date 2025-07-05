@@ -230,7 +230,7 @@ namespace EInvoiceAPI.Controllers
         }
 
         [HttpGet("[action]")]
-        public ActionResult<string> GetSubmission(string submitionUUID)
+        public async Task<ActionResult<string>> GetSubmission(string submitionUUID)
         {
             companyCode = Request.Headers["CompanyCode"];
             environmentId = Request.Headers["EnvironmentId"];
@@ -264,7 +264,7 @@ namespace EInvoiceAPI.Controllers
 
                 if ((int)response.StatusCode == 0 || response.StatusCode == (HttpStatusCode)429)
                 {
-                    Thread.Sleep(2000 * attempt);
+                    await Task.Delay(2000 * attempt);
                     continue;
                 }
 
@@ -281,12 +281,12 @@ namespace EInvoiceAPI.Controllers
                 goto GetToken;
             }
 
-            return StatusCode(Convert.ToInt32(response.StatusCode), response.Content);
+            return StatusCode((int)response.StatusCode, response.Content);
         }
 
         [HttpGet("[action]")]
         [Produces("application/json")]
-        public IActionResult GetDocumentDetails(string documentUUID)
+        public async Task<IActionResult> GetDocumentDetails(string documentUUID)
         {
             companyCode = Request.Headers["CompanyCode"].ToString();
             environmentId = Request.Headers["EnvironmentId"].ToString();
@@ -317,7 +317,7 @@ namespace EInvoiceAPI.Controllers
 
                 if ((int)response.StatusCode == 0 || response.StatusCode == (HttpStatusCode)429)
                 {
-                    Thread.Sleep(2000 * attempt);
+                    await Task.Delay(2000 * attempt);
                     continue;
                 }
 
@@ -334,12 +334,11 @@ namespace EInvoiceAPI.Controllers
                 goto GetToken;
             }
 
-            var res = JsonConvert.DeserializeObject<ExpandoObject>(response.Content, InvoiceHelper.JsonSettings);
-            return StatusCode(Convert.ToInt32(response.StatusCode), res);
+            return StatusCode((int)response.StatusCode, response.Content);
         }
 
         [HttpGet("[action]")]
-        public ActionResult<string> GetDocumentErrors(string documentUUID)
+        public async Task<ActionResult<string>> GetDocumentErrors(string documentUUID)
         {
             companyCode = Request.Headers["CompanyCode"].ToString();
             environmentId = Request.Headers["EnvironmentId"].ToString();
@@ -371,7 +370,7 @@ namespace EInvoiceAPI.Controllers
 
                 if ((int)response.StatusCode == 0 || response.StatusCode == (HttpStatusCode)429)
                 {
-                    Thread.Sleep(2000 * attempt);
+                    await Task.Delay(2000 * attempt);
                     continue;
                 }
 
