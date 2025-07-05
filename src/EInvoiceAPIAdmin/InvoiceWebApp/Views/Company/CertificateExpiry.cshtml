@@ -1,0 +1,141 @@
+@{
+    ViewData["Title"] = "Certificate Expiry Status";
+}
+@section css{
+    <style>
+        /* Gradient color for expiry date cell */
+        .cert-expiry-gradient {
+            color: #222;
+            font-weight: bold;
+            transition: background 0.3s;
+            white-space: nowrap;
+        }
+        .cert-date-nowrap {
+            white-space: nowrap;
+        }
+        .cert-loading {
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            min-height: 200px;
+            font-size: 1.045rem;
+            color: #888;
+        }
+        .cert-hide { display: none !important; }
+        #certExpiryTable {
+            font-size: 0.825rem;
+            min-width: 500px;
+            max-width: 95%;
+            margin-left: auto;
+            margin-right: auto;
+        }
+        #certExpiryTableContainer {
+            margin-left: auto;
+            margin-right: auto;
+        }
+    </style>
+}
+<h3>Certificate Expiry Status</h3>
+<div id="certExpiryLoading" class="cert-loading">
+    <span>
+        <span class="spinner-border text-primary" role="status" aria-hidden="true"></span>
+        <span class="ms-2">Loading certificates...</span>
+    </span>
+</div>
+<div class="table-responsive" id="certExpiryTableContainer">
+    <table class="table table-bordered table-hover" id="certExpiryTable">
+        <thead>
+            <tr>
+                <th>Serial Number</th>
+                <th>Subject Name</th>
+                <th>Issuer Name</th>
+                <th class="cert-date-nowrap">Issued Date</th>
+                <th class="cert-date-nowrap">Expiry Date</th>
+                <th>Version</th>
+                <th>Friendly Name</th>
+            </tr>
+        </thead>
+        <tbody id="certExpiryTableBody">
+            <!-- Certificate rows will be loaded here -->
+        </tbody>
+    </table>
+</div>
+@section Scripts {
+<script>
+document.addEventListener('DOMContentLoaded', function () {
+    function getGradientColor(days) {
+        // days < 0: expired (red), 0-30: yellow, >30: green
+        // We'll interpolate from red (255,0,0) to yellow (255,255,0) to green (0,200,0)
+        if (days < 0) return 'rgb(255, 80, 80)'; // expired: red
+        if (days > 90) return 'rgb(0, 200, 0)'; // far future: green
+        if (days <= 30) {
+            // red to yellow
+            // 0 days: red (255,80,80), 30 days: yellow (255,255,0)
+            const r = 255;
+            const g = Math.round(80 + (175 * (days / 30)));
+            const b = Math.round(80 - (80 * (days / 30)));
+            return `rgb(${r},${g},${b})`;
+        } else {
+            // yellow to green
+            // 31 days: yellow (255,255,0), 90 days: green (0,200,0)
+            const ratio = (days - 30) / 60; // 0 at 31, 1 at 90
+            const r = Math.round(255 - (255 * ratio));
+            const g = Math.round(255 - (55 * ratio));
+            const b = 0;
+            return `rgb(${r},${g},${b})`;
+        }
+    }
+    function loadCertificates() {
+        const tbody = document.getElementById('certExpiryTableBody');
+        const loadingDiv = document.getElementById('certExpiryLoading');
+        const tableContainer = document.getElementById('certExpiryTableContainer');
+        tbody.innerHTML = '';
+        loadingDiv.style.display = '';
+        tableContainer.classList.add('cert-hide');
+        fetch('/Company/Certificates')
+            .then(response => {
+                if (!response.ok) throw new Error('Network response was not ok');
+                return response.json();
+            })
+            .then(data => {
+                loadingDiv.style.display = 'none';
+                tableContainer.classList.remove('cert-hide');
+                if (!data.certificates || !Array.isArray(data.certificates)) {
+                    tbody.innerHTML = '<tr><td colspan="7" class="text-center">Failed to load certificates.</td></tr>';
+                    return;
+                }
+                if (data.certificates.length === 0) {
+                    tbody.innerHTML = '<tr><td colspan="7" class="text-center">No certificates found.</td></tr>';
+                    return;
+                }
+                const today = new Date();
+                data.certificates.forEach(cert => {
+                    let expiryStyle = '';
+                    if (cert.notAfter) {
+                        const expiry = new Date(cert.notAfter);
+                        const diffDays = Math.ceil((expiry - today) / (1000 * 60 * 60 * 24));
+                        expiryStyle = `background: ${getGradientColor(diffDays)}`;
+                    }
+                    const tr = document.createElement('tr');
+                    tr.innerHTML = `
+                        <td>${cert.serialNumber || ''}</td>
+                        <td>${cert.subjectName || ''}</td>
+                        <td>${cert.issuerName || ''}</td>
+                        <td class="cert-date-nowrap">${cert.notBefore ? cert.notBefore.split('T')[0] : ''}</td>
+                        <td class="cert-expiry-gradient cert-date-nowrap" style="${expiryStyle}">${cert.notAfter ? cert.notAfter.split('T')[0] : ''}</td>
+                        <td>${cert.version || ''}</td>
+                        <td>${cert.friendlyName || ''}</td>
+                    `;
+                    tbody.appendChild(tr);
+                });
+            })
+            .catch(() => {
+                loadingDiv.style.display = 'none';
+                tableContainer.classList.remove('cert-hide');
+                tbody.innerHTML = '<tr><td colspan="7" class="text-center text-danger">Failed to load certificates.</td></tr>';
+            });
+    }
+    loadCertificates();
+});
+</script>
+}

@@ -282,5 +282,11 @@ namespace InvoiceWebApp.Controllers
             var json = JsonSerializer.Serialize(new { certificates });
             return Content(json, "application/json");
         }
+
+        [HttpGet]
+        public IActionResult CertificateExpiry()
+        {
+            return View();
+        }
     }
 }

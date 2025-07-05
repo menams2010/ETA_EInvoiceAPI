@@ -121,27 +121,32 @@ body {
                 </h4> *@
                 <ul class="nav flex-column">
                     <li class="nav-item">
-                        <a class="nav-link @(activePage.Contains("/company") ? "active" : "")" asp-controller="Company" asp-action="Index">
+                        <a class="nav-link @((currentController == "company" && currentAction == "index") ? "active" : "" )" asp-controller="Company" asp-action="Index">
                             <i class="bi bi-building"></i> <span>Companies</span>
                         </a>
                     </li>
                     <li class="nav-item">
-                        <a class="nav-link @(activePage.Contains("/compenv") ? "active" : "")" asp-controller="CompEnv" asp-action="Index">
-                            <i class="bi bi-link-45deg"></i> <span>CompEnv</span>
+                        <a class="nav-link @((currentController == "company" && currentAction == "certificateexpiry") ? "active" : "")" asp-controller="Company" asp-action="CertificateExpiry">
+                            <i class="bi bi-shield-exclamation"></i> <span>Certificate Expiry</span>
                         </a>
                     </li>
                     <li class="nav-item">
-                        <a class="nav-link @(activePage.Contains("/einvoiceenv") ? "active" : "")" asp-controller="EInvoiceEnv" asp-action="Index">
-                            <i class="bi bi-file-earmark-text"></i> <span>EInvoiceEnv</span>
+                        <a class="nav-link @((currentController == "compenv" && currentAction == "index") ? "active" : "")" asp-controller="CompEnv" asp-action="Index">
+                            <i class="bi bi-link-45deg"></i> <span>Company Environments</span>
                         </a>
                     </li>
                     <li class="nav-item">
-                        <a class="nav-link @(activePage.Contains("/settings") ? "active" : "")" asp-controller="Settings" asp-action="Index">
+                        <a class="nav-link @((currentController == "einvoiceenv" && currentAction == "index") ? "active" : "")" asp-controller="EInvoiceEnv" asp-action="Index">
+                            <i class="bi bi-file-earmark-text"></i> <span>E-Invoice Environments</span>
+                        </a>
+                    </li>
+                    <li class="nav-item">
+                        <a class="nav-link @((currentController == "settings" && currentAction == "index") ? "active" : "")" asp-controller="Settings" asp-action="Index">
                             <i class="bi bi-gear"></i> <span>Settings</span>
                         </a>
                     </li>
                     <li class="nav-item">
-                        <a class="nav-link @(activePage.Contains("/login") ? "active" : "")" asp-controller="Login" asp-action="Index">
+                        <a class="nav-link @((currentController == "login" && currentAction == "index") ? "active" : "")" asp-controller="Login" asp-action="Index">
                             <i class="bi bi-person"></i> <span>Login Users</span>
                         </a>
                     </li>
