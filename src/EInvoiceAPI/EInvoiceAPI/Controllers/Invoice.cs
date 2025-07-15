@@ -182,9 +182,9 @@ namespace EInvoiceAPI.Controllers
 
         GetToken:
             var token = TokenHelper.GetToken(companyCode, environmentId, out var tokenSettings, sysUIFormat);
-            if (token == "CANNOT")
+            if (token.StartsWith("CANNOT"))
             {
-                return Unauthorized("Cannot Get Token");
+                return Unauthorized("Cannot Get Token \r\n" + token);
             }
 
             IdentityBaseURL = tokenSettings?.EnvTokenUrl;
@@ -237,9 +237,9 @@ namespace EInvoiceAPI.Controllers
 
         GetToken:
             var token = TokenHelper.GetToken(companyCode, environmentId, out var tokenSettings, sysUIFormat);
-            if (token == "CANNOT")
+            if (token.StartsWith("CANNOT"))
             {
-                return Unauthorized("Cannot Get Token");
+                return Unauthorized("Cannot Get Token \r\n" + token);
             }
 
             IdentityBaseURL = tokenSettings?.EnvTokenUrl;
@@ -293,9 +293,9 @@ namespace EInvoiceAPI.Controllers
 
         GetToken:
             var token = TokenHelper.GetToken(companyCode, environmentId, out var tokenSettings, sysUIFormat);
-            if (token == "CANNOT")
+            if (token.StartsWith("CANNOT"))
             {
-                return Unauthorized("Cannot Get Token");
+                return Unauthorized("Cannot Get Token \r\n" + token);
             }
 
             IdentityBaseURL = tokenSettings?.EnvTokenUrl;
@@ -345,9 +345,9 @@ namespace EInvoiceAPI.Controllers
 
         GetToken:
             var token = TokenHelper.GetToken(companyCode, environmentId, out var tokenSettings, sysUIFormat);
-            if (token == "CANNOT")
+            if (token.StartsWith("CANNOT"))
             {
-                return Unauthorized("Cannot Get Token");
+                return Unauthorized("Cannot Get Token \r\n" + token);
             }
 
             IdentityBaseURL = tokenSettings?.EnvTokenUrl;
@@ -417,9 +417,9 @@ namespace EInvoiceAPI.Controllers
 
         GetToken:
             var token = TokenHelper.GetToken(companyCode, environmentId, out var tokenSettings, sysUIFormat);
-            if (token == "CANNOT")
+            if (token.StartsWith("CANNOT"))
             {
-                return Unauthorized("Cannot Get Token");
+                return Unauthorized("Cannot Get Token \r\n" + token);
             }
 
             IdentityBaseURL = tokenSettings?.EnvTokenUrl;
@@ -485,9 +485,9 @@ namespace EInvoiceAPI.Controllers
 
         GetToken:
             var token = TokenHelper.GetToken(companyCode, environmentId, out var tokenSettings, sysUIFormat);
-            if (token == "CANNOT")
+            if (token.StartsWith("CANNOT"))
             {
-                return Unauthorized("Cannot Get Token");
+                return Unauthorized("Cannot Get Token \r\n" + token);
             }
 
             IdentityBaseURL = tokenSettings?.EnvTokenUrl;
@@ -565,9 +565,9 @@ namespace EInvoiceAPI.Controllers
 
         GetToken:
             var token = TokenHelper.GetToken(companyCode, environmentId, out var tokenSettings, sysUIFormat);
-            if (token == "CANNOT")
+            if (token.StartsWith("CANNOT"))
             {
-                return Unauthorized("Cannot Get Token");
+                return Unauthorized("Cannot Get Token \r\n" + token);
             }
 
             IdentityBaseURL = tokenSettings?.EnvTokenUrl;
