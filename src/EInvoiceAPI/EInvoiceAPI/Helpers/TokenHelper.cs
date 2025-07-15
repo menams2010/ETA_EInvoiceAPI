@@ -57,7 +57,7 @@ namespace EInvoiceAPI.Helpers
                 var tokenTable = TokenManager.GetToken(companyCode, environmentId);
                 tokenSettings = MapTokenTable(tokenTable);
                 if (tokenSettings == null)
-                    return "CANNOT";
+                    return "CANNOT: MAP_TOKEN_TABLE_FAILED";
 
                 var dateTimeFormat = TokenManager.GetSettings("DateTimeFormat")?.ToString() ?? sysUIFormat;
                 if (tokenSettings.TokenTime == DateTime.MinValue)
@@ -80,9 +80,13 @@ namespace EInvoiceAPI.Helpers
                     tokenRequest.AddParameter("client_secret", tokenSettings.ClientSecret);
                     tokenRequest.AddParameter("scope", "InvoicingAPI");
                     var tokenResponse = client.Execute(tokenRequest);
-                    if (tokenResponse.StatusCode != System.Net.HttpStatusCode.OK)
+                    if (tokenResponse.StatusCode != System.Net.HttpStatusCode.OK && tokenResponse.Content == null)
                     {
                         continue;
+                    }
+                    else if (tokenResponse.StatusCode != System.Net.HttpStatusCode.OK && tokenResponse.Content != null)
+                    {
+                        return $"CANNOT: {tokenResponse.Content}";
                     }
                     TokenManager.SaveToken(Token.FromJson(tokenResponse.Content).AccessToken, DateTime.Now.ToString(), companyCode, environmentId);
                     TokenManager.SaveSettings("DateTimeFormat", sysUIFormat);
@@ -90,7 +94,7 @@ namespace EInvoiceAPI.Helpers
                 }
                 return tokenSettings.Token;
             }
-            return "CANNOT";
+            return "CANNOT: UNKNOWN_ERROR";
         }
     }
 }
