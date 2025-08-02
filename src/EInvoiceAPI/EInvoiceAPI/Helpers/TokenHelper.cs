@@ -1,5 +1,6 @@
 using System;
 using System.Data;
+using System.Globalization;
 
 namespace EInvoiceAPI.Helpers
 {
@@ -10,15 +11,16 @@ namespace EInvoiceAPI.Helpers
         public string? ClientId { get; set; }
         public string? ClientSecret { get; set; }
         public string? Token { get; set; }
-        public DateTime TokenTime { get; set; }
+        public string? TokenTime { get; set; }
     }
 
     public static class TokenHelper
     {
-        public static TokenSettings? MapTokenTable(DataTable table)
+        public static TokenSettings? MapTokenTable(DataTable table, string sysUIFormat)
         {
             if (table.Rows.Count != 1) return null;
             var row = table.Rows[0];
+
             return new TokenSettings
             {
                 EnvTokenUrl = row["EnvTokenUrl"].ToString(),
@@ -27,8 +29,8 @@ namespace EInvoiceAPI.Helpers
                 ClientSecret = row["ClientSecret"].ToString(),
                 Token = row["str_token"].ToString(),
                 TokenTime = row["time_get"] == DBNull.Value
-                    ? DateTime.Now.AddDays(-1)
-                    : DateTime.Parse(row["time_get"].ToString() ?? DateTime.Now.AddDays(-1).ToString())
+                    ? DateTime.Now.AddDays(-1).ToString(sysUIFormat)
+                    : DateTime.Parse(row["time_get"].ToString() ?? DateTime.Now.AddDays(-1).ToString()).ToString(sysUIFormat)
             };
         }
 
@@ -55,19 +57,19 @@ namespace EInvoiceAPI.Helpers
             for (int attempt = 0; attempt < maxTries; attempt++)
             {
                 var tokenTable = TokenManager.GetToken(companyCode, environmentId);
-                tokenSettings = MapTokenTable(tokenTable);
+                tokenSettings = MapTokenTable(tokenTable, sysUIFormat);
                 if (tokenSettings == null)
                     return "CANNOT: MAP_TOKEN_TABLE_FAILED";
 
                 var dateTimeFormat = TokenManager.GetSettings("DateTimeFormat")?.ToString() ?? sysUIFormat;
-                if (tokenSettings.TokenTime == DateTime.MinValue)
+                if (tokenSettings.TokenTime == DateTime.MinValue.ToString(sysUIFormat))
                 {
-                    tokenSettings.TokenTime = DateTime.Now.AddDays(-1);
+                    tokenSettings.TokenTime = DateTime.Now.AddDays(-1).ToString(sysUIFormat);
                     dateTimeFormat = sysUIFormat;
                     TokenManager.SaveSettings("DateTimeFormat", sysUIFormat);
                 }
                 var tokenDate = tokenSettings.TokenTime;
-                TimeSpan timeDiff = DateTime.Now - tokenDate;
+                TimeSpan timeDiff = DateTime.Now - Convert.ToDateTime(tokenDate);
                 if (timeDiff.TotalSeconds > 3000)
                 {
                     var client = InvoiceHelper.SharedClient;

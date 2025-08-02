@@ -44,8 +44,8 @@ namespace EInvoiceAPI.Controllers
         private string? ClientSecret;
         private bool UseXML = false;
         private bool UseIMP;
-        private string? companyCode;
-        private string? environmentId;
+        //private string? companyCode;
+        //private string? environmentId;
         private readonly string sysUIFormat = CultureInfo.CurrentUICulture.DateTimeFormat.ShortDatePattern
                                               + " "
                                               + CultureInfo.CurrentUICulture.DateTimeFormat.LongTimePattern;
@@ -73,9 +73,9 @@ namespace EInvoiceAPI.Controllers
 
         [HttpPost("[action]")]
         [Produces("application/json")]
-        public async Task<IActionResult> SignInvoice()
+        public async Task<IActionResult> SignInvoice([FromHeader] string CompanyCode)
         {
-            companyCode = Request.Headers["CompanyCode"].ToString();
+            //companyCode = Request.Headers["CompanyCode"].ToString();
             string requestBody;
             using (var sr = new StreamReader(Request.Body))
             {
@@ -102,11 +102,11 @@ namespace EInvoiceAPI.Controllers
             var serializedJson = _serializer.Serialize(invoice);
             string docVer = invoice["documentTypeVersion"]?.ToString() ?? string.Empty;
 
-            TokenHelper.GetE_Sign(companyCode, out TokenSerial, out TokenPin, out CertSerialNum, out UseXML);
+            TokenHelper.GetE_Sign(CompanyCode, out TokenSerial, out TokenPin, out CertSerialNum, out UseXML);
 
             string signValue = docVer.Equals("0.9")
                 ? "ANY"
-                : SignWithCms(Encoding.UTF8.GetBytes(serializedJson), UseIMP, companyCode);
+                : SignWithCms(Encoding.UTF8.GetBytes(serializedJson), UseIMP, CompanyCode);
 
             if (signValue.StartsWith("Error:"))
             {
@@ -131,10 +131,10 @@ namespace EInvoiceAPI.Controllers
         }
 
         [HttpPost("[action]")]
-        public async Task<IActionResult> SendInvoice()
+        public async Task<IActionResult> SendInvoice([FromHeader] string CompanyCode, [FromHeader] string EnvironmentId)
         {
-            companyCode = Request.Headers["CompanyCode"].ToString();
-            environmentId = Request.Headers["EnvironmentId"].ToString();
+            //companyCode = Request.Headers["CompanyCode"].ToString();
+            //environmentId = Request.Headers["EnvironmentId"].ToString();
             string requestBody;
             using (var sr = new StreamReader(Request.Body))
             {
@@ -161,11 +161,11 @@ namespace EInvoiceAPI.Controllers
             var serializedJson = _serializer.Serialize(invoice);
             string docVer = invoice["documentTypeVersion"]?.ToString() ?? string.Empty;
 
-            TokenHelper.GetE_Sign(companyCode, out TokenSerial, out TokenPin, out CertSerialNum, out UseXML);
+            TokenHelper.GetE_Sign(CompanyCode, out TokenSerial, out TokenPin, out CertSerialNum, out UseXML);
 
             string signValue = docVer.Equals("0.9")
                 ? "ANY"
-                : SignWithCms(Encoding.UTF8.GetBytes(serializedJson), UseIMP, companyCode);
+                : SignWithCms(Encoding.UTF8.GetBytes(serializedJson), UseIMP, CompanyCode);
             if (signValue.StartsWith("Error:"))
             {
                 return StatusCode(SignError, signValue);
@@ -181,7 +181,7 @@ namespace EInvoiceAPI.Controllers
             string signedInvoice = "{\"documents\":[" + invoice.ToString() + "]}";
 
         GetToken:
-            var token = TokenHelper.GetToken(companyCode, environmentId, out var tokenSettings, sysUIFormat);
+            var token = TokenHelper.GetToken(CompanyCode, EnvironmentId, out var tokenSettings, sysUIFormat);
             if (token.StartsWith("CANNOT"))
             {
                 return Unauthorized("Cannot Get Token \r\n" + token);
@@ -230,13 +230,13 @@ namespace EInvoiceAPI.Controllers
         }
 
         [HttpGet("[action]")]
-        public async Task<ActionResult<string>> GetSubmission(string submitionUUID)
+        public async Task<ActionResult> GetSubmission([FromHeader] string CompanyCode, [FromHeader] string EnvironmentId, string submitionUUID)
         {
-            companyCode = Request.Headers["CompanyCode"];
-            environmentId = Request.Headers["EnvironmentId"];
+        //companyCode = Request.Headers["CompanyCode"];
+        //environmentId = Request.Headers["EnvironmentId"];
 
         GetToken:
-            var token = TokenHelper.GetToken(companyCode, environmentId, out var tokenSettings, sysUIFormat);
+            var token = TokenHelper.GetToken(CompanyCode, EnvironmentId, out var tokenSettings, sysUIFormat);
             if (token.StartsWith("CANNOT"))
             {
                 return Unauthorized("Cannot Get Token \r\n" + token);
@@ -280,19 +280,19 @@ namespace EInvoiceAPI.Controllers
             {
                 goto GetToken;
             }
-
-            return StatusCode((int)response.StatusCode, response.Content);
+            var res = JsonConvert.DeserializeObject<ExpandoObject>(response.Content, InvoiceHelper.JsonSettings);
+            return StatusCode((int)response.StatusCode, res);
         }
 
         [HttpGet("[action]")]
         [Produces("application/json")]
-        public async Task<IActionResult> GetDocumentDetails(string documentUUID)
+        public async Task<IActionResult> GetDocumentDetails([FromHeader] string CompanyCode, [FromHeader] string EnvironmentId, string documentUUID)
         {
-            companyCode = Request.Headers["CompanyCode"].ToString();
-            environmentId = Request.Headers["EnvironmentId"].ToString();
+        //companyCode = Request.Headers["CompanyCode"].ToString();
+        //environmentId = Request.Headers["EnvironmentId"].ToString();
 
         GetToken:
-            var token = TokenHelper.GetToken(companyCode, environmentId, out var tokenSettings, sysUIFormat);
+            var token = TokenHelper.GetToken(CompanyCode, EnvironmentId, out var tokenSettings, sysUIFormat);
             if (token.StartsWith("CANNOT"))
             {
                 return Unauthorized("Cannot Get Token \r\n" + token);
@@ -333,18 +333,18 @@ namespace EInvoiceAPI.Controllers
             {
                 goto GetToken;
             }
-
-            return StatusCode((int)response.StatusCode, response.Content);
+            var res = JsonConvert.DeserializeObject<ExpandoObject>(response.Content, InvoiceHelper.JsonSettings);
+            return StatusCode((int)response.StatusCode, res);
         }
 
         [HttpGet("[action]")]
-        public async Task<ActionResult<string>> GetDocumentErrors(string documentUUID)
+        public async Task<ActionResult<string>> GetDocumentErrors([FromHeader] string CompanyCode, [FromHeader] string EnvironmentId, string documentUUID)
         {
-            companyCode = Request.Headers["CompanyCode"].ToString();
-            environmentId = Request.Headers["EnvironmentId"].ToString();
+        //companyCode = Request.Headers["CompanyCode"].ToString();
+        //environmentId = Request.Headers["EnvironmentId"].ToString();
 
         GetToken:
-            var token = TokenHelper.GetToken(companyCode, environmentId, out var tokenSettings, sysUIFormat);
+            var token = TokenHelper.GetToken(CompanyCode, EnvironmentId, out var tokenSettings, sysUIFormat);
             if (token.StartsWith("CANNOT"))
             {
                 return Unauthorized("Cannot Get Token \r\n" + token);
@@ -412,11 +412,11 @@ namespace EInvoiceAPI.Controllers
         [HttpGet("[action]")]
         public ActionResult<string> GetDocumentValid([FromHeader] string CompanyCode, [FromHeader] string EnvironmentId, string invoiceDocumentNo, [Optional] string? issueDateTime)
         {
-            companyCode = Request.Headers["CompanyCode"].ToString();
-            environmentId = Request.Headers["EnvironmentId"].ToString();
+        //companyCode = Request.Headers["CompanyCode"].ToString();
+        //environmentId = Request.Headers["EnvironmentId"].ToString();
 
         GetToken:
-            var token = TokenHelper.GetToken(companyCode, environmentId, out var tokenSettings, sysUIFormat);
+            var token = TokenHelper.GetToken(CompanyCode, EnvironmentId, out var tokenSettings, sysUIFormat);
             if (token.StartsWith("CANNOT"))
             {
                 return Unauthorized("Cannot Get Token \r\n" + token);
@@ -472,19 +472,19 @@ namespace EInvoiceAPI.Controllers
                 }
                 return StatusCode((int)HttpStatusCode.NotFound, "No Valid Documents");
             }
-
-            return StatusCode(Convert.ToInt32(response.StatusCode), response.Content);
+            var res = JsonConvert.DeserializeObject<ExpandoObject>(response.Content, InvoiceHelper.JsonSettings);
+            return StatusCode(Convert.ToInt32(response.StatusCode), res);
         }
 
         [HttpGet("[action]")]
-        public ActionResult<string> GetVendorDocumentUUID(string vendorDocumentNo, string vendorVatRegNo)
+        public ActionResult<string> GetVendorDocumentUUID([FromHeader] string CompanyCode, [FromHeader] string EnvironmentId, string vendorDocumentNo, string vendorVatRegNo)
         {
-            companyCode = Request.Headers["CompanyCode"].ToString();
-            environmentId = Request.Headers["EnvironmentId"].ToString();
+            //companyCode = Request.Headers["CompanyCode"].ToString();
+            //environmentId = Request.Headers["EnvironmentId"].ToString();
             long pageNo = 1;
 
         GetToken:
-            var token = TokenHelper.GetToken(companyCode, environmentId, out var tokenSettings, sysUIFormat);
+            var token = TokenHelper.GetToken(CompanyCode, EnvironmentId, out var tokenSettings, sysUIFormat);
             if (token.StartsWith("CANNOT"))
             {
                 return Unauthorized("Cannot Get Token \r\n" + token);
@@ -553,18 +553,18 @@ namespace EInvoiceAPI.Controllers
                 }
                 return BadRequest("No Documents found");
             }
-
-            return StatusCode(Convert.ToInt32(response.StatusCode), response.Content);
+            var res = JsonConvert.DeserializeObject<ExpandoObject>(response.Content, InvoiceHelper.JsonSettings);
+            return StatusCode(Convert.ToInt32(response.StatusCode), res);
         }
 
         [HttpGet("[action]")]
-        public ActionResult<string> CancelInvoice(string documentUUID)
+        public ActionResult<string> CancelInvoice([FromHeader] string CompanyCode, [FromHeader] string EnvironmentId, string documentUUID)
         {
-            companyCode = Request.Headers["CompanyCode"].ToString();
-            environmentId = Request.Headers["EnvironmentId"].ToString();
+        //companyCode = Request.Headers["CompanyCode"].ToString();
+        //environmentId = Request.Headers["EnvironmentId"].ToString();
 
         GetToken:
-            var token = TokenHelper.GetToken(companyCode, environmentId, out var tokenSettings, sysUIFormat);
+            var token = TokenHelper.GetToken(CompanyCode, EnvironmentId, out var tokenSettings, sysUIFormat);
             if (token.StartsWith("CANNOT"))
             {
                 return Unauthorized("Cannot Get Token \r\n" + token);
@@ -598,8 +598,9 @@ namespace EInvoiceAPI.Controllers
 
                 break;
             }
+            var res = JsonConvert.DeserializeObject<ExpandoObject>(response.Content, InvoiceHelper.JsonSettings);
 
-            if (response == null || (int)response.StatusCode == 0)
+            if (response == null || response.StatusCode == 0)
             {
                 return StatusCode(500, "Error: Received status code 0 with an empty response body from the API.");
             }
@@ -608,13 +609,7 @@ namespace EInvoiceAPI.Controllers
             {
                 goto GetToken;
             }
-
-            if (response.StatusCode == HttpStatusCode.BadRequest)
-            {
-                return BadRequest(response.Content);
-            }
-
-            return Forbid(response.Content);
+            return BadRequest(res);
         }
 
         private object GetSlotLock(string slotSerial)
