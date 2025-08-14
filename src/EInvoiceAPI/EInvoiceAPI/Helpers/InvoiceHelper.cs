@@ -20,8 +20,8 @@ namespace EInvoiceAPI.Helpers
             Formatting = Formatting.None
         };
 
-        // Shared RestClient for reuse
-        public static readonly RestClient SharedClient = new RestClient();
+        //// Shared RestClient for reuse
+        //public static readonly RestClient SharedClient = new RestClient();
 
         // Cache XmlSerializer instances for performance
         private static readonly ConcurrentDictionary<Type, XmlSerializer> XmlSerializers = new();

@@ -5,22 +5,43 @@ using System.Data.SQLite;
 using System.Linq;
 using System.Threading.Tasks;
 using System.IO;
+using EInvoiceAPI.Services;
 
 namespace EInvoiceAPI
 {
     public static class TokenManager
     {
-        public static object GetSettings(string settingName)
+        public static object GetSettings(string settingName, SlackLogger? slackLogger = null, string? companyCode = null)
         {
             SQLiteConnection sqliteConn = CreateConnection();
+            if (sqliteConn == null)
+            {
+                var msg = "Failed to open config database connection.";
+                slackLogger?.LogHelperAsync(companyCode, msg, "TokenManager.GetSettings").GetAwaiter().GetResult();
+                throw new Exception(msg);
+            }
+
             SQLiteCommand cmd = new SQLiteCommand(sqliteConn);
             cmd.Parameters.Add(new SQLiteParameter("@SettingName"));
             cmd.Parameters["@SettingName"].Value = settingName;
             cmd.CommandText = @"Select [SettingValue] From ""main"".""tb_Settings"" WHERE [SettingName] = @SettingName;";
-            object settingValue = cmd.ExecuteScalar();
-            if (sqliteConn.State == ConnectionState.Open)
+            object settingValue = null;
+            try
             {
-                sqliteConn.Close();
+                settingValue = cmd.ExecuteScalar();
+            }
+            catch (Exception ex)
+            {
+                var msg = "Error reading setting from config file: " + ex.Message;
+                slackLogger?.LogHelperAsync(companyCode, msg, "TokenManager.GetSettings").GetAwaiter().GetResult();
+                throw new Exception(msg, ex);
+            }
+            finally
+            {
+                if (sqliteConn.State == ConnectionState.Open)
+                {
+                    sqliteConn.Close();
+                }
             }
 
             return settingValue;

@@ -47,6 +47,7 @@ namespace EInvoiceAPI
             services.AddScoped<Hasher>();
             services.AddControllers();
             services.AddSingleton<CertificateCache>();
+            services.AddSingleton<SlackLogger>();
 
         }
 
