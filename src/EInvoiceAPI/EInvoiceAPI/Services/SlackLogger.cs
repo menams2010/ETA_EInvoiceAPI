@@ -3,9 +3,9 @@ using Microsoft.AspNetCore.Http;
 using Microsoft.Extensions.Configuration;
 using Newtonsoft.Json.Linq;
 using RestSharp;
-using RestSharp.Serializers;
 using System;
 using System.Collections.Generic;
+using System.Linq;
 using System.Net;
 using System.Net.Http;
 using System.Text;
@@ -41,7 +41,7 @@ namespace EInvoiceAPI.Services
         /// <param name="response">The RestSharp response object</param>
         /// <param name="methodName">Name of the API method being called</param>
         /// <returns>Task representing the async operation</returns>
-        public async Task LogApiCallAsync(string companyCode, string environmentId, RestClient client, RestRequest request, IRestResponse response, string methodName)
+        public async Task LogApiCallAsync(string companyCode, string environmentId, RestClient client, RestRequest request, RestResponse response, string methodName)
         {
             if (!_isEnabled)
                 return;
@@ -50,140 +50,115 @@ namespace EInvoiceAPI.Services
             {
                 var timestamp = DateTime.Now.ToString("yyyy-MM-dd HH:mm:ss");
 
-                // Extract invoice number or document ID from request or response
-                JObject? invoice = InvoiceHelper.DeserializeInvoice(request.Body?.Value?.ToString() ?? string.Empty);
-                string invoiceNumber = invoice["internalID"]?.ToString() ?? string.Empty;
+                // Extract invoice number or document ID from request body if possible
+                string requestBody = request.Parameters
+                    .FirstOrDefault(p => p.Type == ParameterType.RequestBody)
+                    ?.Value?.ToString() ?? string.Empty;
+
+                JObject? invoice = InvoiceHelper.DeserializeInvoice(requestBody);
+                string invoiceNumber = invoice?["internalID"]?.ToString() ?? string.Empty;
                 string localUrl = request.Resource;
-                string remoteUrl = response.ResponseUri?.ToString() ?? "";
-                string baseUrl = client?.BaseUrl?.ToString() ?? string.Empty;
+                string remoteUrl = response.ResponseUri?.ToString() ?? string.Empty;
+                string baseUrl = client?.Options?.BaseUrl?.ToString() ?? string.Empty;
 
                 // Build response headers
                 var responseHeaders = new StringBuilder();
-                foreach (var header in response.Headers)
+                if (response.Headers != null)
                 {
-                    responseHeaders.AppendLine($"{header.Name}: {header.Value}");
+                    foreach (var header in response.Headers)
+                    {
+                        responseHeaders.AppendLine($"{header.Name}: {header.Value}");
+                    }
                 }
 
                 // Format response content (limit size)
                 string responseContent = string.Empty;
                 if (!string.IsNullOrEmpty(response.Content))
                 {
-                    if (response.Content.Length > 1000)
-                    {
-                        responseContent = $"{response.Content.Substring(0, 1000)}... [truncated]";
-                    }
-                    else
-                    {
-                        responseContent = response.Content;
-                    }
+                    responseContent = response.Content.Length > 1000
+                        ? $"{response.Content.Substring(0, 1000)}... [truncated]"
+                        : response.Content;
                 }
 
-                // Get request body if it exists
-                string requestBody = string.Empty;
-                var bodyParam = request.Parameters.Find(p => p.Type == ParameterType.RequestBody);
-                if (bodyParam != null)
+                // Truncate request body if needed
+                if (!string.IsNullOrEmpty(requestBody) && requestBody.Length > 1000)
                 {
-                    var body = bodyParam.Value?.ToString();
-                    if (!string.IsNullOrEmpty(body) && body.Length > 1000)
-                    {
-                        requestBody = $"{body.Substring(0, 1000)}... [truncated]";
-                    }
-                    else
-                    {
-                        requestBody = body;
-                    }
+                    requestBody = $"{requestBody.Substring(0, 1000)}... [truncated]";
                 }
 
-                var message = new
+                var blocks = new List<object>
                 {
-                    blocks = new object[]
+                    new
                     {
-                        new
+                        type = "header",
+                        text = new { type = "plain_text", text = $"API Call: {methodName}" }
+                    },
+                    new
+                    {
+                        type = "section",
+                        fields = new object[]
                         {
-                            type = "header",
-                            text = new
-                            {
-                                type = "plain_text",
-                                text = $"API Call: {methodName}"
-                            }
-                        },
-                        new
+                            new { type = "mrkdwn", text = $"*Timestamp:*\n{timestamp}" },
+                            new { type = "mrkdwn", text = $"*Status:*\n{(int)response.StatusCode} - {response.StatusCode}" },
+                            new { type = "mrkdwn", text = $"*Company Code:*\n{companyCode}" },
+                            new { type = "mrkdwn", text = $"*Environment ID:*\n{environmentId}" }
+                        }
+                    },
+                    new
+                    {
+                        type = "section",
+                        fields = new object[]
                         {
-                            type = "section",
-                            fields = new object[]
-                            {
-                                new { type = "mrkdwn", text = $"*Timestamp:*\n{timestamp}" },
-                                new { type = "mrkdwn", text = $"*Status:*\n{(int)response.StatusCode} - {response.StatusCode.ToString()}" },
-                                new { type = "mrkdwn", text = $"*Company Code:*\n{companyCode}" },
-                                new { type = "mrkdwn", text = $"*Environment ID:*\n{environmentId}" }
-                            }
-                        },
-                        new
+                            new { type = "mrkdwn", text = $"*Invoice Number:*\n{invoiceNumber}" },
+                            new { type = "mrkdwn", text = $"*Local URL:*\n{localUrl}" }
+                        }
+                    },
+                    new
+                    {
+                        type = "section",
+                        fields = new object[]
                         {
-                            type = "section",
-                            fields = new object[]
-                            {
-                                new { type = "mrkdwn", text = $"*Invoice Number:*\n{invoiceNumber}" },
-                                new { type = "mrkdwn", text = $"*Local URL:*\n{localUrl}" }
-                            }
-                        },
-                        new
-                        {
-                            type = "section",
-                            fields = new object[]
-                            {
-                              new { type = "mrkdwn", text = $"*Base URL:*\n{baseUrl}" },
-                              new { type = "mrkdwn", text = $"*Remote URL:*\n{remoteUrl}" }
-                            }
+                            new { type = "mrkdwn", text = $"*Base URL:*\n{baseUrl}" },
+                            new { type = "mrkdwn", text = $"*Remote URL:*\n{remoteUrl}" }
                         }
                     }
                 };
 
-                // Add request body section if it exists
                 if (!string.IsNullOrEmpty(requestBody))
                 {
-                    var blocks = new List<object>((message.blocks as object[]));
                     blocks.Add(new
                     {
                         type = "section",
                         text = new { type = "mrkdwn", text = $"*Request Body:*\n```{requestBody}```" }
                     });
-                    message = new { blocks = blocks.ToArray() };
                 }
 
-                // Add response headers section
-                var blocksWithResponseHeaders = new List<object>((message.blocks as object[]));
-                blocksWithResponseHeaders.Add(new
+                blocks.Add(new
                 {
                     type = "section",
                     text = new { type = "mrkdwn", text = $"*Response Headers:*\n```{responseHeaders}```" }
                 });
-                message = new { blocks = blocksWithResponseHeaders.ToArray() };
 
-                // Add response content section if it exists
                 if (!string.IsNullOrEmpty(responseContent))
                 {
-                    var blocks = new List<object>((message.blocks as object[]));
                     blocks.Add(new
                     {
                         type = "section",
                         text = new { type = "mrkdwn", text = $"*Response Body:*\n```{responseContent}```" }
                     });
-                    message = new { blocks = blocks.ToArray() };
                 }
 
-                // Add divider at the end
-                var finalBlocks = new List<object>((message.blocks as object[]));
-                finalBlocks.Add(new { type = "divider" });
-                message = new { blocks = finalBlocks.ToArray() };
+                blocks.Add(new { type = "divider" });
 
-                // Send to Slack
+                var message = new { blocks = blocks.ToArray() };
+
+                // Send to Slack (disabled by default/commented)
                 var json = JsonSerializer.Serialize(message);
                 var content = new StringContent(json, Encoding.UTF8, "application/json");
-                if (!response.IsSuccessful && !response.StatusCode.Equals(200) && !response.StatusCode.Equals(202))
-                {
-                    await _httpClient.PostAsync(_webhookUrl, content);
-                }
+                //if (!response.IsSuccessful && response.StatusCode != HttpStatusCode.OK && response.StatusCode != HttpStatusCode.Accepted)
+                //{
+                //    await _httpClient.PostAsync(_webhookUrl, content);
+                //}
             }
             catch (Exception ex)
             {
@@ -212,7 +187,6 @@ namespace EInvoiceAPI.Services
                 string requestBody = string.Empty;
                 if (request.Body != null && request.Body.CanSeek)
                 {
-                    // Save the current position
                     var position = request.Body.Position;
                     request.Body.Position = 0;
 
@@ -221,79 +195,64 @@ namespace EInvoiceAPI.Services
                         requestBody = await reader.ReadToEndAsync();
                     }
 
-                    // Reset to original position
                     request.Body.Position = position;
                 }
 
                 // Extract invoice number from request body
                 JObject? invoice = InvoiceHelper.DeserializeInvoice(requestBody);
-                string invoiceNumber = invoice["internalID"]?.ToString() ?? string.Empty;
+                string invoiceNumber = invoice?["internalID"]?.ToString() ?? string.Empty;
 
-                var message = new
+                var blocks = new List<object>
                 {
-                    blocks = new object[]
+                    new
                     {
-                        new
+                        type = "header",
+                        text = new { type = "plain_text", text = $"API Call: {methodName}" }
+                    },
+                    new
+                    {
+                        type = "section",
+                        fields = new object[]
                         {
-                            type = "header",
-                            text = new
-                            {
-                                type = "plain_text",
-                                text = $"API Call: {methodName}"
-                            }
-                        },
-                        new
+                            new { type = "mrkdwn", text = $"*Timestamp:*\n{timestamp}" },
+                            new { type = "mrkdwn", text = $"*Company Code:*\n{companyCode}" }
+                        }
+                    },
+                    new
+                    {
+                        type = "section",
+                        fields = new object[]
                         {
-                            type = "section",
-                            fields = new object[]
-                            {
-                                new { type = "mrkdwn", text = $"*Timestamp:*\n{timestamp}" },
-                                new { type = "mrkdwn", text = $"*Company Code:*\n{companyCode}" }
-                            }
-                        },
-                        new
-                        {
-                            type = "section",
-                            fields = new object[]
-                            {
-                                new { type = "mrkdwn", text = $"*Invoice Number:*\n{invoiceNumber}" },
-                                new { type = "mrkdwn", text = $"*Local URL:*\n{request.Path}" }
-                            }
+                            new { type = "mrkdwn", text = $"*Invoice Number:*\n{invoiceNumber}" },
+                            new { type = "mrkdwn", text = $"*Local URL:*\n{request.Path}" }
                         }
                     }
                 };
 
-                // Add request body section if it exists
                 if (!string.IsNullOrEmpty(requestBody))
                 {
-                    // Truncate if too long
                     if (requestBody.Length > 1000)
                     {
                         requestBody = $"{requestBody.Substring(0, 1000)}... [truncated]";
                     }
 
-                    var blocks = new List<object>((message.blocks as object[]));
                     blocks.Add(new
                     {
                         type = "section",
                         text = new { type = "mrkdwn", text = $"*Request Body:*\n```{requestBody}```" }
                     });
-                    message = new { blocks = blocks.ToArray() };
                 }
 
-                // Add divider at the end
-                var finalBlocks = new List<object>((message.blocks as object[]));
-                finalBlocks.Add(new { type = "divider" });
-                message = new { blocks = finalBlocks.ToArray() };
+                blocks.Add(new { type = "divider" });
 
-                // Send to Slack
+                var message = new { blocks = blocks.ToArray() };
+
                 var json = JsonSerializer.Serialize(message);
                 var content = new StringContent(json, Encoding.UTF8, "application/json");
-                await _httpClient.PostAsync(_webhookUrl, content);
+                //await _httpClient.PostAsync(_webhookUrl, content);
             }
             catch (Exception ex)
             {
-                // Silently fail for logging errors
                 Console.WriteLine($"Error logging to Slack: {ex.Message}");
             }
         }
@@ -318,11 +277,7 @@ namespace EInvoiceAPI.Services
                     new
                     {
                         type = "header",
-                        text = new
-                        {
-                            type = "plain_text",
-                            text = $"TokenHelper Log: {methodName}"
-                        }
+                        text = new { type = "plain_text", text = $"TokenHelper Log: {methodName}" }
                     },
                     new
                     {
@@ -344,7 +299,7 @@ namespace EInvoiceAPI.Services
                 var slackMessage = new { blocks = blocks.ToArray() };
                 var json = JsonSerializer.Serialize(slackMessage);
                 var content = new StringContent(json, Encoding.UTF8, "application/json");
-                await _httpClient.PostAsync(_webhookUrl, content);
+                //await _httpClient.PostAsync(_webhookUrl, content);
             }
             catch (Exception ex)
             {

@@ -18,22 +18,34 @@ namespace EInvoiceAPI.Helpers
 
     public static class TokenHelper
     {
+        private static readonly CultureInfo enUS = new CultureInfo("en-US");
         public static TokenSettings? MapTokenTable(DataTable table, string sysUIFormat)
         {
             if (table.Rows.Count != 1) return null;
             var row = table.Rows[0];
+            TokenSettings tokenSettings = new TokenSettings();
+            tokenSettings.EnvTokenUrl = row["EnvTokenUrl"].ToString();
+            tokenSettings.EnvInvoicingUrl = row["EnvInvoicingUrl"].ToString();
+            tokenSettings.ClientId = row["ClientId"].ToString();
+            tokenSettings.ClientSecret = row["ClientSecret"].ToString();
+            tokenSettings.Token = row["str_token"].ToString();
+            var timeGetText = row["time_get"]?.ToString();
 
-            return new TokenSettings
+            if (string.IsNullOrWhiteSpace(timeGetText))
             {
-                EnvTokenUrl = row["EnvTokenUrl"].ToString(),
-                EnvInvoicingUrl = row["EnvInvoicingUrl"].ToString(),
-                ClientId = row["ClientId"].ToString(),
-                ClientSecret = row["ClientSecret"].ToString(),
-                Token = row["str_token"].ToString(),
-                TokenTime = row["time_get"] == DBNull.Value
-                    ? DateTime.Now.AddDays(-1).ToString(sysUIFormat)
-                    : DateTime.Parse(row["time_get"].ToString() ?? DateTime.Now.AddDays(-1).ToString()).ToString(sysUIFormat)
-            };
+                tokenSettings.TokenTime = DateTime.Now.AddDays(-1).ToString(sysUIFormat, enUS);
+            }
+            else if (DateTime.TryParseExact(timeGetText, sysUIFormat, enUS, DateTimeStyles.None, out var dt) ||
+                     DateTime.TryParse(timeGetText, enUS, DateTimeStyles.AssumeLocal, out dt))
+            {
+                tokenSettings.TokenTime = dt.ToString(sysUIFormat, enUS);
+            }
+            else
+            {
+                tokenSettings.TokenTime = DateTime.Now.AddDays(-1).ToString(sysUIFormat, enUS);
+            }
+
+            return tokenSettings;
         }
 
         public static TokenSettings? GetE_Sign(string companyCode, out string? tokenSerial, out string? tokenPin, out string? certSerialNum, out bool useXml)
@@ -64,6 +76,27 @@ namespace EInvoiceAPI.Helpers
             for (int attempt = 0; attempt < maxTries; attempt++)
             {
                 var tokenTable = TokenManager.GetToken(companyCode, environmentId);
+                if (tokenTable.Rows.Count.Equals(0))
+                {
+                    return $"CANNOT: COMPANY_NOT_FOUND_WITH_ENV_{environmentId.ToUpper()}";
+                }
+                if (tokenTable.Rows.Count.Equals(1))
+                {
+                    var clientSecretExpirationDate = tokenTable.Rows[0]["ClientSecretExpirationDate"];
+                    if (clientSecretExpirationDate != DBNull.Value && DateOnly.TryParse(clientSecretExpirationDate.ToString(), out DateOnly expirationDate))
+                    {
+                        if (expirationDate < DateOnly.FromDateTime(DateTime.Now))
+                        {
+                            slackLogger?.LogHelperAsync(
+                                companyCode,
+                                $"GetToken failed: ClientSecretExpired for companyCode={companyCode}, environmentId={environmentId}, attempt={attempt + 1}",
+                                "TokenHelper.GetToken"
+                            );
+                            return "CANNOT: CLIENT_SECRET_EXPIRED";
+                        }
+                    }
+                }
+
                 tokenSettings = MapTokenTable(tokenTable, sysUIFormat);
                 if (tokenSettings == null)
                 {
@@ -76,26 +109,26 @@ namespace EInvoiceAPI.Helpers
                 }
 
                 var dateTimeFormat = TokenManager.GetSettings("DateTimeFormat")?.ToString() ?? sysUIFormat;
-                if (tokenSettings.TokenTime == DateTime.MinValue.ToString(sysUIFormat))
+                if (tokenSettings.TokenTime == DateTime.MinValue.ToString(sysUIFormat, enUS))
                 {
-                    tokenSettings.TokenTime = DateTime.Now.AddDays(-1).ToString(sysUIFormat);
-                    dateTimeFormat = sysUIFormat;
-                    TokenManager.SaveSettings("DateTimeFormat", sysUIFormat);
+                    tokenSettings.TokenTime = DateTime.Now.AddDays(-1).ToString(sysUIFormat, enUS);
                 }
-                var tokenDate = tokenSettings.TokenTime;
-                TimeSpan timeDiff = DateTime.Now - Convert.ToDateTime(tokenDate);
+
+                var parsedTokenTime = DateTime.ParseExact(tokenSettings.TokenTime, sysUIFormat, enUS, DateTimeStyles.None);
+                TimeSpan timeDiff = DateTime.Now - Convert.ToDateTime(parsedTokenTime, enUS);
                 if (timeDiff.TotalSeconds > 3000)
                 {
-                    RestClient client = new RestClient();
-                    client.BaseUrl = new Uri(tokenSettings.EnvTokenUrl!);
-                    client.Timeout = 30000;
-                    var tokenRequest = new RestSharp.RestRequest(RestSharp.Method.POST);
+                    var client = new RestClient(new RestClientOptions(tokenSettings.EnvTokenUrl!)
+                    {
+                        Timeout = TimeSpan.FromSeconds(30),
+                    });
+                    var tokenRequest = new RestRequest(string.Empty, Method.Post);
                     tokenRequest.AddHeader("Content-Type", "application/x-www-form-urlencoded");
                     tokenRequest.AddParameter("grant_type", "client_credentials");
                     tokenRequest.AddParameter("client_id", tokenSettings.ClientId);
                     tokenRequest.AddParameter("client_secret", tokenSettings.ClientSecret);
                     tokenRequest.AddParameter("scope", "InvoicingAPI");
-                    var tokenResponse = client.Execute(tokenRequest);
+                    var tokenResponse = client.ExecuteAsync(tokenRequest).GetAwaiter().GetResult();
 
                     if (tokenResponse.StatusCode != System.Net.HttpStatusCode.OK && tokenResponse.Content == null)
                     {
@@ -115,8 +148,7 @@ namespace EInvoiceAPI.Helpers
                         );
                         return $"CANNOT: {tokenResponse.Content}";
                     }
-                    TokenManager.SaveToken(Token.FromJson(tokenResponse.Content).AccessToken, DateTime.Now.ToString(), companyCode, environmentId);
-                    TokenManager.SaveSettings("DateTimeFormat", sysUIFormat);
+                    TokenManager.SaveToken(Token.FromJson(tokenResponse.Content).AccessToken, DateTime.Now.ToString(sysUIFormat, enUS), companyCode, environmentId);
 
                     slackLogger?.LogHelperAsync(
                         companyCode,
