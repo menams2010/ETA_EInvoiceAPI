@@ -133,12 +133,13 @@ namespace EInvoiceAPI.Controllers
         }
 
         [HttpPost("[action]")]
-        public async Task<IActionResult> SendInvoice([FromHeader] string CompanyCode, [FromHeader] string EnvironmentId)
+        public IActionResult SendInvoice([FromHeader] string CompanyCode, [FromHeader] string EnvironmentId)
         {
             string requestBody;
             using (var sr = new StreamReader(Request.Body))
             {
-                requestBody = await sr.ReadToEndAsync();
+                // Use async read but block to avoid ASP.NET Core sync IO restriction
+                requestBody = sr.ReadToEndAsync().GetAwaiter().GetResult();
             }
 
             object? runImpersonated = TokenManager.GetSettings("UseImpersonation");
@@ -181,7 +182,7 @@ namespace EInvoiceAPI.Controllers
             string signedInvoice = "{\"documents\":[" + invoice.ToString() + "]}";
         ////////////////////////////////////////////////////////////
         // Log the API call to Slack
-        //await _slackLogger.LogApiCallAsync(CompanyCode, Request, "SendInvoice");
+        //_slackLogger.LogApiCallAsync(CompanyCode, Request, "SendInvoice").GetAwaiter().GetResult();
         ////////////////////////////////////////////////////////////
 
         GetToken:
@@ -211,10 +212,11 @@ namespace EInvoiceAPI.Controllers
             catch { /* ignore */ }
             var allowInvalidSsl = Convert.ToBoolean(TokenManager.GetSettings("AllowInvalidSsl") ?? "false");
 
-            var clientOptions = new RestClientOptions(SystemAPIBaseURL + "documentsubmissions")
+            var clientOptions = new RestClientOptions(SystemAPIBaseURL + "documentSubmissions")
             {
-                Timeout = TimeSpan.FromSeconds(30),
-                RemoteCertificateValidationCallback = allowInvalidSsl ? (sender, cert, chain, errors) => true : null
+                Timeout = TimeSpan.FromSeconds(40),
+                RemoteCertificateValidationCallback = allowInvalidSsl ? (sender, cert, chain, errors) => true : null,
+                FollowRedirects = false
             };
             RestClient client = new RestClient(clientOptions);
 
@@ -223,28 +225,29 @@ namespace EInvoiceAPI.Controllers
             RestResponse? response = null;
 
             while (attempt < maxRetries)
-            {
+            {   
                 attempt++;
                 var request = new RestRequest(string.Empty, Method.Post);
                 request.AddHeader("Content-Type", "application/json");
                 request.AddHeader("Authorization", "Bearer " + token);
                 request.AddStringBody(signedInvoice, DataFormat.Json);
 
-                response = await client.ExecuteAsync(request);
+                // Execute the request synchronously by blocking on the async call
+                response = client.ExecutePost(request);
 
-                // Log the API call to Slack
-                await _slackLogger.LogApiCallAsync(CompanyCode, EnvironmentId, client, request, response, "SendInvoice");
+                // Log the API call to Slack synchronously
+                _slackLogger.LogApiCallAsync(CompanyCode, EnvironmentId, client, request, response, "SendInvoice").GetAwaiter().GetResult();
 
                 if ((int)response.StatusCode == 0 || response.StatusCode == (HttpStatusCode)429)
                 {
-                    await Task.Delay(2000 * attempt);
+                    System.Threading.Thread.Sleep(2000 * attempt);
                     continue;
                 }
 
                 break;
             }
 
-            if (response is null || (int)response.StatusCode == 0)
+            if (response == null || string.IsNullOrEmpty(response.Content) || string.IsNullOrWhiteSpace(response.Content) || (int)response.StatusCode == 0)
             {
                 return StatusCode(500, "Error: Received status code 0 with an empty response body from the ETA API.\r\n" + response?.ErrorMessage);
             }
@@ -260,7 +263,6 @@ namespace EInvoiceAPI.Controllers
                 Content = response.Content,
                 ContentType = "application/json"
             };
-
         }
 
         [HttpGet("[action]")]
@@ -553,7 +555,7 @@ namespace EInvoiceAPI.Controllers
                 break;
             }
 
-            if (response is null || (int)response.StatusCode == 0)
+            if (response.Content is null || (int)response.StatusCode == 0)
             {
                 return StatusCode(500, "Error: Received status code 0 with an empty response body from the API.");
             }
