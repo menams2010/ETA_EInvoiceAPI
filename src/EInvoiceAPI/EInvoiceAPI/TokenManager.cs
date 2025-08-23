@@ -1,46 +1,104 @@
 ﻿using System;
 using System.Collections.Generic;
 using System.Data;
-using System.Data.SQLite;
-using System.Linq;
-using System.Threading.Tasks;
 using System.IO;
+using System.Linq;
+using LiteDB;
+using EInvoiceAPI.Services;
 
 namespace EInvoiceAPI
 {
     public static class TokenManager
     {
-        public static object GetSettings(string settingName)
+        // POCOs mapped to LiteDB collections
+        private class TbSetting
         {
-            SQLiteConnection sqliteConn = CreateConnection();
-            SQLiteCommand cmd = new SQLiteCommand(sqliteConn);
-            cmd.Parameters.Add(new SQLiteParameter("@SettingName"));
-            cmd.Parameters["@SettingName"].Value = settingName;
-            cmd.CommandText = @"Select [SettingValue] From ""main"".""tb_Settings"" WHERE [SettingName] = @SettingName;";
-            object settingValue = cmd.ExecuteScalar();
-            if (sqliteConn.State == ConnectionState.Open)
-            {
-                sqliteConn.Close();
-            }
+            public int Id { get; set; }
+            public string SettingName { get; set; } = string.Empty;
+            public string? SettingValue { get; set; }
+        }
 
-            return settingValue;
+        private class TbCompany
+        {
+            public int Id { get; set; }
+            public long? CompanyCode { get; set; }
+            public string CompanyName { get; set; }
+            public string TokenSerial { get; set; }
+            public string TokenPin { get; set; }
+            public string CertSerialNum { get; set; }
+            public string UseXMLTOJSON { get; set; } = "false"; // keep as string to match previous expectations
+        }
+
+        private class TbEInvoiceEnv
+        {
+            public int Id { get; set; }
+            public string EnvName { get; set; }
+            public string EnvTokenUrl { get; set; }
+            public string EnvInvoicingUrl { get; set; }
+        }
+
+        private class TbCompEnv
+        {
+            public int Id { get; set; }
+            public long CompanyId { get; set; }
+            public long EnvId { get; set; }
+            public string? ClientId { get; set; }
+            public string? ClientSecret { get; set; }
+            public DateOnly? ClientSecretExpirationDate { get; set; }
+            public string? str_token { get; set; }
+            public string? time_get { get; set; }
+        }
+
+        private class TbLogin
+        {
+            public int Id { get; set; }
+            public string u_name { get; set; } = string.Empty;
+            public string u_pass { get; set; } = string.Empty;
+            public bool IsInitial { get; set; } = true;
+        }
+
+        private static string DbPath => Path.Combine(AppContext.BaseDirectory, "config.db");
+
+        private static LiteDatabase OpenDatabase()
+        {
+            Directory.CreateDirectory(AppContext.BaseDirectory);
+            // Use shared connection mode in case multiple threads access it
+            return new LiteDatabase($"Filename={DbPath};Password=@Mina&29012017&Mariam@;Connection=shared");
+        }
+
+        public static object? GetSettings(string settingName, SlackLogger? slackLogger = null, string? companyCode = null)
+        {
+            try
+            {
+                using var db = OpenDatabase();
+                CreateOrMigrateConfigFile(db);
+                var col = db.GetCollection<TbSetting>("Settings");
+                var doc = col.FindOne(x => x.SettingName == settingName);
+                return doc?.SettingValue;
+            }
+            catch (Exception ex)
+            {
+                var msg = "Error reading setting from config file: " + ex.Message;
+                slackLogger?.LogHelperAsync(companyCode, msg, "TokenManager.GetSettings").GetAwaiter().GetResult();
+                throw new Exception(msg, ex);
+            }
         }
 
         public static void SaveSettings(string settingName, object settingValue)
         {
-            SQLiteConnection sqliteConn = CreateConnection();
-            SQLiteCommand cmd = new SQLiteCommand(sqliteConn);
-            cmd.Parameters.Add(new SQLiteParameter("@SettingName"));
-            cmd.Parameters.Add(new SQLiteParameter("@SettingValue"));
-            cmd.Parameters["@SettingName"].Value = settingName.ToString();
-            cmd.Parameters["@SettingValue"].Value = settingValue.ToString();
-            cmd.CommandText = @"UPDATE [tb_Settings] 
-                                               SET [SettingValue] = @SettingValue
-                                             WHERE [SettingName] = @SettingName;";
-            cmd.ExecuteNonQuery();
-            if (sqliteConn.State == ConnectionState.Open)
+            using var db = OpenDatabase();
+            CreateOrMigrateConfigFile(db);
+            var col = db.GetCollection<TbSetting>("Settings");
+            var existing = col.FindOne(x => x.SettingName == settingName);
+            if (existing == null)
             {
-                sqliteConn.Close();
+                existing = new TbSetting { SettingName = settingName, SettingValue = settingValue?.ToString() };
+                col.Insert(existing);
+            }
+            else
+            {
+                existing.SettingValue = settingValue?.ToString();
+                col.Update(existing);
             }
         }
 
@@ -54,34 +112,28 @@ namespace EInvoiceAPI
 
         public static void SetCacheLastRefresh(DateTime dt)
         {
-            // Try update first, if not exists, insert
-            SQLiteConnection sqliteConn = CreateConnection();
-            SQLiteCommand cmd = new SQLiteCommand(sqliteConn);
-            cmd.CommandText = @"UPDATE [tb_Settings] SET [SettingValue]=@val WHERE [SettingName]='CertCacheLastRefresh';";
-            cmd.Parameters.AddWithValue("@val", dt.ToString("yyyy-MM-dd HH:mm:ss"));
-            int rows = cmd.ExecuteNonQuery();
-            if (rows == 0)
-            {
-                cmd.CommandText = @"INSERT INTO [tb_Settings] ([SettingName],[SettingValue]) VALUES ('CertCacheLastRefresh',@val);";
-                cmd.ExecuteNonQuery();
-            }
-            if (sqliteConn.State == System.Data.ConnectionState.Open)
-                sqliteConn.Close();
+            SaveSettings("CertCacheLastRefresh", dt.ToString("yyyy-MM-dd HH:mm:ss"));
         }
 
         public static DataTable getE_Signing(string companyCode)
         {
-            CreateOrMigrateConfigFile();
+            using var db = OpenDatabase();
+            CreateOrMigrateConfigFile(db);
 
-            DataTable dt = new DataTable();
-            SQLiteConnection? sqlite_conn = CreateConnection();
-            SQLiteCommand cmd = new SQLiteCommand(sqlite_conn);
-            cmd.CommandText = @"SELECT TokenSerial, TokenPin, CertSerialNum, UseXMLTOJSON FROM ""main"".""tb_Company"" WHERE CompanyCode = '" + companyCode + "'";
-            SQLiteDataAdapter da = new SQLiteDataAdapter(cmd);
-            da.Fill(dt);
-            if (sqlite_conn.State == ConnectionState.Open)
+            var dt = new DataTable();
+            dt.Columns.Add("TokenSerial", typeof(string));
+            dt.Columns.Add("TokenPin", typeof(string));
+            dt.Columns.Add("CertSerialNum", typeof(string));
+            dt.Columns.Add("UseXMLTOJSON", typeof(string));
+
+            var companies = db.GetCollection<TbCompany>("Companies");
+            if (long.TryParse(companyCode, out var cc))
             {
-                sqlite_conn.Close();
+                var comp = companies.FindOne(c => c.CompanyCode == cc);
+                if (comp != null)
+                {
+                    dt.Rows.Add(comp.TokenSerial, comp.TokenPin, comp.CertSerialNum, comp.UseXMLTOJSON);
+                }
             }
 
             return dt;
@@ -89,18 +141,60 @@ namespace EInvoiceAPI
 
         public static DataTable GetToken(string companyCode, string environmentId)
         {
-            CreateOrMigrateConfigFile();
+            using var db = OpenDatabase();
+            CreateOrMigrateConfigFile(db);
 
-            int EnvId = environmentId.Equals("Prod") ? 2 : 1;
-            DataTable dt = new DataTable();
-            SQLiteConnection? sqlite_conn = CreateConnection();
-            SQLiteCommand cmd = new SQLiteCommand(sqlite_conn);
-            cmd.CommandText = @"SELECT * FROM ""main"".""V_Data"" WHERE CompanyCode = '" + companyCode + "' And EnvId = " + EnvId;
-            SQLiteDataAdapter da = new SQLiteDataAdapter(cmd);
-            da.Fill(dt);
-            if (sqlite_conn.State == ConnectionState.Open)
+            int EnvId = environmentId.Equals("Prod", StringComparison.OrdinalIgnoreCase) ? 2 : 1;
+
+            var dt = new DataTable();
+            dt.Columns.Add("CompanyCode", typeof(long));
+            dt.Columns.Add("CompanyName", typeof(string));
+            dt.Columns.Add("TokenSerial", typeof(string));
+            dt.Columns.Add("TokenPin", typeof(string));
+            dt.Columns.Add("CertSerialNum", typeof(string));
+            dt.Columns.Add("EnvId", typeof(int));
+            dt.Columns.Add("EnvName", typeof(string));
+            dt.Columns.Add("EnvTokenUrl", typeof(string));
+            dt.Columns.Add("EnvInvoicingUrl", typeof(string));
+            dt.Columns.Add("ClientId", typeof(string));
+            dt.Columns.Add("ClientSecret", typeof(string));
+            dt.Columns.Add("ClientSecretExpirationDate", typeof(DateOnly));
+            dt.Columns.Add("str_token", typeof(string));
+            dt.Columns.Add("time_get", typeof(string));
+            dt.Columns.Add("UseXMLTOJSON", typeof(string));
+
+            var companies = db.GetCollection<TbCompany>("Companies");
+            var compEnvs = db.GetCollection<TbCompEnv>("CompEnvs");
+            var envs = db.GetCollection<TbEInvoiceEnv>("EInvoiceEnvs");
+
+            if (!long.TryParse(companyCode, out var cc))
+                return dt;
+
+            var comp = companies.FindOne(c => c.CompanyCode == cc);
+            if (comp == null) return dt;
+
+            var compEnv = compEnvs.FindOne(ce => ce.CompanyId == comp.Id && ce.EnvId == EnvId);
+            var env = envs.FindById(EnvId);
+
+            if (env != null && compEnv != null)
             {
-                sqlite_conn.Close();
+                dt.Rows.Add(
+                    comp.CompanyCode ?? 0,
+                    comp.CompanyName,
+                    comp.TokenSerial,
+                    comp.TokenPin,
+                    comp.CertSerialNum,
+                    EnvId,
+                    env.EnvName,
+                    env.EnvTokenUrl,
+                    env.EnvInvoicingUrl,
+                    compEnv.ClientId,
+                    compEnv.ClientSecret,
+                    compEnv.ClientSecretExpirationDate,
+                    compEnv.str_token,
+                    compEnv.time_get,
+                    comp.UseXMLTOJSON
+                );
             }
 
             return dt;
@@ -108,214 +202,118 @@ namespace EInvoiceAPI
 
         public static void SaveToken(string? token, string timeGet, string companyCode, string environmentId)
         {
-            int EnvId = environmentId.Equals("Prod") ? 2 : 1;
-            SQLiteConnection? sqlite_conn = CreateConnection();
-            SQLiteCommand cmd = new SQLiteCommand(sqlite_conn);
-            cmd.CommandText =
-                @"UPDATE ""main"".""tb_CompEnv"" SET str_token=@str_token,time_get=@time_get WHERE CompanyId = (SELECT Id FROM ""main"".""tb_company"" WHERE CompanyCode = " +
-                companyCode + ") AND EnvId = " + EnvId;
-            cmd.Parameters.Add(new SQLiteParameter("@str_token", token));
-            cmd.Parameters.Add(new SQLiteParameter("@time_get", timeGet));
-            cmd.ExecuteNonQuery();
+            using var db = OpenDatabase();
+            CreateOrMigrateConfigFile(db);
 
-            if (sqlite_conn.State == ConnectionState.Open)
+            int EnvId = environmentId.Equals("Prod", StringComparison.OrdinalIgnoreCase) ? 2 : 1;
+
+            var companies = db.GetCollection<TbCompany>("Companies");
+            var compEnvs = db.GetCollection<TbCompEnv>("CompEnvs");
+
+            if (!long.TryParse(companyCode, out var cc))
+                return;
+
+            var comp = companies.FindOne(c => c.CompanyCode == cc);
+            if (comp == null) return;
+
+            var compEnv = compEnvs.FindOne(ce => ce.CompanyId == comp.Id && ce.EnvId == EnvId);
+            if (compEnv != null)
             {
-                sqlite_conn.Close();
+                compEnv.str_token = token;
+                compEnv.time_get = timeGet;
+                compEnvs.Update(compEnv);
             }
         }
 
-        private static SQLiteConnection? CreateConnection()
+        // Create configuration data if database is empty or migrate minimal fields
+        private static void CreateOrMigrateConfigFile(LiteDatabase db)
         {
-            SQLiteConnection? sqliteConn = new SQLiteConnection("Data Source=" + AppContext.BaseDirectory + @"\config.db;");
             try
             {
-                sqliteConn.Open();
-            }
-            catch (Exception)
-            {
-                return null;
-            }
-            return sqliteConn;
-        }
+                var settings = db.GetCollection<TbSetting>("Settings");
+                var companies = db.GetCollection<TbCompany>("Companies");
+                var compEnvs = db.GetCollection<TbCompEnv>("CompEnvs");
+                var envs = db.GetCollection<TbEInvoiceEnv>("EInvoiceEnvs");
+                var logins = db.GetCollection<TbLogin>("Logins");
 
-        private static void CreateConfigFile()
-        {
-            SQLiteConnection? sqliteConn = new SQLiteConnection("Data Source=" + AppContext.BaseDirectory + @"\config.db;");
-            sqliteConn.Open();
-            SQLiteCommand cmd = new SQLiteCommand(sqliteConn);
-            cmd.CommandText = @"SELECT 1;
-PRAGMA foreign_keys=OFF;
-BEGIN TRANSACTION;
-CREATE TABLE [tb_Login] (
-  [Id] INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL
-, [u_name] text NOT NULL
-, [u_pass] text NOT NULL
-, [IsInitial] numeric(1,0) DEFAULT (1) NOT NULL
-);
-CREATE TABLE [tb_eInvoiceEnv] (
-  [Id] INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL
-, [EnvName] text NULL
-, [EnvTokenUrl] text NULL
-, [EnvInvoicingUrl] text NULL
-);
-CREATE TABLE [tb_CompEnv] (
-  [Id] INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL
-, [CompanyId] bigint NOT NULL
-, [EnvId] bigint NOT NULL
-, [ClientId] text NULL
-, [ClientSecret] text NULL
-, [str_token] text NULL
-, [time_get] text NULL
-);
-CREATE TABLE [tb_Company] (
-  [Id] INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL
-, [CompanyCode] bigint NULL
-, [CompanyName] text NULL
-, [TokenSerial] text NULL
-, [TokenPin] text NULL
-, [CertSerialNum] text NULL
-, [UseXMLTOJSON] text DEFAULT 'false'
-);
-CREATE TABLE [tb_Settings] (
-  [Id] INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL
-, [SettingName] text NOT NULL
-, [SettingValue] text NULL
-);
-INSERT INTO [tb_Login] ([Id],[u_name],[u_pass],[IsInitial]) VALUES (1,'mina.mouris','Mariam1995',1);
-INSERT INTO [tb_eInvoiceEnv] ([Id],[EnvName],[EnvTokenUrl],[EnvInvoicingUrl]) VALUES (1,'PreProd','https://id.preprod.eta.gov.eg/connect/token','https://api.preprod.invoicing.eta.gov.eg/api/v1/');
-INSERT INTO [tb_eInvoiceEnv] ([Id],[EnvName],[EnvTokenUrl],[EnvInvoicingUrl]) VALUES (2,'Prod','https://id.eta.gov.eg/connect/token','https://api.invoicing.eta.gov.eg/api/v1/');
-INSERT INTO [tb_Settings] ([Id],[SettingName],[SettingValue]) VALUES (1,'DBVersion','2025-06-28 19:40:00');
-INSERT INTO [tb_Settings] ([Id],[SettingName],[SettingValue]) VALUES (2,'UseImpersonation','false');
-INSERT INTO [tb_Settings] ([Id],[SettingName],[SettingValue]) VALUES (3,'ImpDomain',NULL);
-INSERT INTO [tb_Settings] ([Id],[SettingName],[SettingValue]) VALUES (4,'ImpUsername',NULL);
-INSERT INTO [tb_Settings] ([Id],[SettingName],[SettingValue]) VALUES (5,'ImpPassword',NULL);
-INSERT INTO [tb_Settings] ([Id],[SettingName],[SettingValue]) VALUES (6,'DateTimeFormat','dd/MM/yyyy hh:mm:ss tt');
-INSERT INTO [tb_Settings] ([Id],[SettingName],[SettingValue]) VALUES (7,'CertCacheLastRefresh',NULL);
-CREATE VIEW V_Data as  
-Select CompanyCode,CompanyName,TokenSerial,TokenPin,CertSerialNum,EnvId,EnvName,EnvTokenUrl,EnvInvoicingUrl,ClientId,ClientSecret,str_token,time_get,UseXMLTOJSON
- From tb_company 
- Left Join tb_CompEnv ON tb_CompEnv.CompanyId = tb_company.Id 
- Left Join tb_eInvoiceEnv ON tb_eInvoiceEnv.Id = tb_CompEnv.EnvId;
-COMMIT;";
-            cmd.ExecuteNonQuery();
-            if (sqliteConn.State == ConnectionState.Open)
-            {
-                sqliteConn.Close();
-            }
-        }
+                // Ensure indexes
+                settings.EnsureIndex(x => x.SettingName, true);
+                companies.EnsureIndex(x => x.CompanyCode);
+                compEnvs.EnsureIndex(x => new { x.CompanyId, x.EnvId }, true);
+                envs.EnsureIndex(x => x.Id);
 
-        public static void CreateOrMigrateConfigFile()
-        {
-            string dbPath = AppContext.BaseDirectory + @"\config.db";
-            if (!File.Exists(dbPath))
-            {
-                CreateConfigFile();
-                return;
-            }
-
-            using var sqliteConn = new SQLiteConnection("Data Source=" + dbPath + ";");
-            sqliteConn.Open();
-
-            // Migration condition: DBVersion not found or less than 2025-06-28 19:40:00
-            string dbVersion = null;
-            using (var cmd = new SQLiteCommand("SELECT SettingValue FROM tb_Settings WHERE SettingName = 'DBVersion'", sqliteConn))
-            {
-                var result = cmd.ExecuteScalar();
-                dbVersion = result == null || result == DBNull.Value ? null : result.ToString();
-            }
-            string migrationThreshold = "2025-06-28 19:40:00";
-            bool shouldMigrate = false;
-
-            if (string.IsNullOrEmpty(dbVersion))
-            {
-                shouldMigrate = true;
-            }
-            else
-            {
-                DateTime dbVersionDate = DateTime.ParseExact(dbVersion, "yyyy-MM-dd HH:mm:ss", null);
-                DateTime thresholdDate = DateTime.ParseExact(migrationThreshold, "yyyy-MM-dd HH:mm:ss", null);
-                if (dbVersionDate < thresholdDate)
-                    shouldMigrate = true;
-            }
-            if (!shouldMigrate)
-            {
-                sqliteConn.Close();
-                return;
-            }
-
-            // 1. Ensure UseXMLTOJSON column exists in tb_Company (as string)
-            using (var cmd = new SQLiteCommand(sqliteConn))
-            {
-                cmd.CommandText = "PRAGMA table_info(tb_Company);";
-                using (var reader = cmd.ExecuteReader())
+                // Seed if first run (no settings present)
+                if (settings.Count() == 0)
                 {
-                    bool hasUseXMLTOJSON = false;
-                    while (reader.Read())
-                    {
-                        if (reader["name"].ToString().Equals("UseXMLTOJSON", StringComparison.OrdinalIgnoreCase))
-                        {
-                            hasUseXMLTOJSON = true;
-                            break;
-                        }
-                    }
-                    reader.Close();
+                    // Seed settings
+                    settings.Insert(new TbSetting { SettingName = "DBVersion", SettingValue = "2025-06-28 19:40:00" });
+                    settings.Insert(new TbSetting { SettingName = "UseImpersonation", SettingValue = "false" });
+                    settings.Insert(new TbSetting { SettingName = "ImpDomain", SettingValue = null });
+                    settings.Insert(new TbSetting { SettingName = "ImpUsername", SettingValue = null });
+                    settings.Insert(new TbSetting { SettingName = "ImpPassword", SettingValue = null });
+                    settings.Insert(new TbSetting { SettingName = "DateTimeFormat", SettingValue = "dd/MM/yyyy hh:mm:ss tt" });
+                    settings.Insert(new TbSetting { SettingName = "CertCacheLastRefresh", SettingValue = null });
 
-                    if (!hasUseXMLTOJSON)
+                    // Seed environments
+                    envs.Insert(new TbEInvoiceEnv
                     {
-                        cmd.CommandText = "ALTER TABLE tb_Company ADD COLUMN UseXMLTOJSON TEXT DEFAULT 'false';";
-                        cmd.ExecuteNonQuery();
+                        Id = 1,
+                        EnvName = "PreProd",
+                        EnvTokenUrl = "https://id.preprod.eta.gov.eg/connect/token",
+                        EnvInvoicingUrl = "https://api.preprod.invoicing.eta.gov.eg/api/v1/"
+                    });
+                    envs.Insert(new TbEInvoiceEnv
+                    {
+                        Id = 2,
+                        EnvName = "Prod",
+                        EnvTokenUrl = "https://id.eta.gov.eg/connect/token",
+                        EnvInvoicingUrl = "https://api.invoicing.eta.gov.eg/api/v1/"
+                    });
+
+                    // Seed login
+                    logins.Insert(new TbLogin
+                    {
+                        Id = 1,
+                        u_name = "mina.mouris",
+                        u_pass = "Mariam1995",
+                        IsInitial = true
+                    });
+                }
+
+                // Minimal migration: ensure UseXMLTOJSON exists on existing companies
+                foreach (var comp in companies.FindAll().Where(c => c.UseXMLTOJSON == null))
+                {
+                    comp.UseXMLTOJSON = "false";
+                    companies.Update(comp);
+                }
+
+                // Ensure DBVersion setting exists and set at least the threshold
+                var versionSetting = settings.FindOne(x => x.SettingName == "DBVersion");
+                var migrationThreshold = "2025-06-28 19:40:00";
+                if (versionSetting == null)
+                {
+                    settings.Insert(new TbSetting { SettingName = "DBVersion", SettingValue = migrationThreshold });
+                }
+                else
+                {
+                    DateTime parsedCurrent, parsedThreshold;
+                    if (!DateTime.TryParseExact(versionSetting.SettingValue ?? string.Empty, "yyyy-MM-dd HH:mm:ss", null, System.Globalization.DateTimeStyles.None, out parsedCurrent))
+                    {
+                        versionSetting.SettingValue = migrationThreshold;
+                        settings.Update(versionSetting);
+                    }
+                    else if (DateTime.TryParseExact(migrationThreshold, "yyyy-MM-dd HH:mm:ss", null, System.Globalization.DateTimeStyles.None, out parsedThreshold) && parsedCurrent < parsedThreshold)
+                    {
+                        versionSetting.SettingValue = migrationThreshold;
+                        settings.Update(versionSetting);
                     }
                 }
             }
-
-            // 2. Cleanse tb_Settings: remove UseXMLTOJSON, reset Id, insert DBVersion as Id=1
-            // 2.1 Read all rows into a DataTable
-            DataTable tempTable = new DataTable();
-            using (var selectCmd = new SQLiteCommand("SELECT SettingName, SettingValue FROM tb_Settings", sqliteConn))
-            using (var adapter = new SQLiteDataAdapter(selectCmd))
+            catch
             {
-                adapter.Fill(tempTable);
+                // If anything goes wrong, just let upper level handle
+                throw;
             }
-
-            // 2.2 Delete all rows from tb_Settings
-            using (var deleteCmd = new SQLiteCommand("DELETE FROM tb_Settings", sqliteConn))
-            {
-                deleteCmd.ExecuteNonQuery();
-            }
-
-            // 2.3 Reset the auto-increment seed
-            using (var resetCmd = new SQLiteCommand("DELETE FROM sqlite_sequence WHERE name='tb_Settings';", sqliteConn))
-            {
-                resetCmd.ExecuteNonQuery();
-            }
-
-            // 2.4 Insert DBVersion as the first row (Id = 1) with fixed value
-            string fixedDbVersion = "2025-06-28 19:40:00";
-            using (var insertCmd = new SQLiteCommand("INSERT INTO tb_Settings (Id, SettingName, SettingValue) VALUES (1, @dbVersionName, @dbVersionValue)", sqliteConn))
-            {
-                insertCmd.Parameters.AddWithValue("@dbVersionName", "DBVersion");
-                insertCmd.Parameters.AddWithValue("@dbVersionValue", fixedDbVersion);
-                insertCmd.ExecuteNonQuery();
-            }
-
-            // 2.5 Re-insert rows from DataTable, excluding UseXMLTOJSON and DBVersion
-            foreach (DataRow row in tempTable.Rows)
-            {
-                string settingName = row["SettingName"]?.ToString();
-                if (string.Equals(settingName, "UseXMLTOJSON", StringComparison.OrdinalIgnoreCase))
-                    continue;
-
-                string settingValue = row["SettingValue"]?.ToString();
-
-                using (var insertCmd = new SQLiteCommand("INSERT INTO tb_Settings (SettingName, SettingValue) VALUES (@SettingName, @SettingValue)", sqliteConn))
-                {
-                    insertCmd.Parameters.AddWithValue("@SettingName", settingName);
-                    insertCmd.Parameters.AddWithValue("@SettingValue", settingValue ?? (object)DBNull.Value);
-                    insertCmd.ExecuteNonQuery();
-                }
-            }
-
-            sqliteConn.Close();
         }
     }
 }
