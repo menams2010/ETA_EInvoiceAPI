@@ -9,13 +9,17 @@ using Newtonsoft.Json;
 using Newtonsoft.Json.Linq;
 using Org.BouncyCastle.Asn1;
 using Org.BouncyCastle.Asn1.Ess;
+using Org.BouncyCastle.Asn1.Nist;
 using Org.BouncyCastle.Asn1.Ocsp;
+using Org.BouncyCastle.Security;
+using Org.BouncyCastle.X509;
 using RestSharp;
 using System.Data;
 using System.Dynamic;
 using System.Globalization;
 using System.Net;
 using System.Reflection.Metadata;
+using System.Runtime.ConstrainedExecution;
 using System.Runtime.InteropServices;
 using System.Security.Cryptography;
 using System.Security.Cryptography.Pkcs;
@@ -167,6 +171,7 @@ namespace EInvoiceAPI.Controllers
             string signValue = docVer.Equals("0.9")
                 ? "ANY"
                 : SignWithCms(Encoding.UTF8.GetBytes(serializedJson), UseIMP, CompanyCode);
+                //: SignWithCmsOld(Encoding.UTF8.GetBytes(serializedJson), UseIMP, CompanyCode);
             if (signValue.StartsWith("Error:"))
             {
                 return StatusCode(SignError, signValue);
@@ -225,7 +230,7 @@ namespace EInvoiceAPI.Controllers
             RestResponse? response = null;
 
             while (attempt < maxRetries)
-            {   
+            {
                 attempt++;
                 var request = new RestRequest(string.Empty, Method.Post);
                 request.AddHeader("Content-Type", "application/json");
@@ -840,6 +845,101 @@ namespace EInvoiceAPI.Controllers
                             catch { }
                         }
                     }
+                }
+            }
+        }
+
+        private string SignWithCmsOld(byte[] data, bool runImpersonated, string CompanyCode)
+        {
+            string domainName = TokenManager.GetSettings("ImpDomain")?.ToString() ?? string.Empty;
+            string userName = TokenManager.GetSettings("ImpUsername")?.ToString() ?? string.Empty;
+            string password = TokenManager.GetSettings("ImpPassword")?.ToString() ?? string.Empty;
+
+            const int logon32ProviderDefault = 0;
+            const int logon32LogonInteractive = 2;
+
+            SafeAccessTokenHandle safeAccessTokenHandle;
+            bool returnValue = LogonUser(userName, domainName, password, logon32LogonInteractive, logon32ProviderDefault, out safeAccessTokenHandle);
+
+            if (!returnValue)
+            {
+                int ret = Marshal.GetLastWin32Error();
+                throw new System.ComponentModel.Win32Exception(ret);
+            }
+            Pkcs11InteropFactories factories = new Pkcs11InteropFactories();
+            using (IPkcs11Library pkcs11Library = factories.Pkcs11LibraryFactory.LoadPkcs11Library(factories, DllLibPath, AppType.MultiThreaded))
+            {
+                ISlot slot = pkcs11Library.GetSlotList(SlotsType.WithTokenPresent).SingleOrDefault(s => s.GetTokenInfo().SerialNumber == TokenSerial);
+                if (slot == null)
+                {
+                    return "Error: No slots found";
+                }
+                var token = slot.GetTokenInfo();
+                var subfi = slot.GetSlotInfo();
+
+                using (var session = slot.OpenSession(SessionType.ReadWrite))
+                {
+                    session.Login(CKU.CKU_USER, Encoding.UTF8.GetBytes(TokenPin));
+                    List<IObjectAttribute> searchAttribute = new List<IObjectAttribute>()
+                    {
+                      session.Factories.ObjectAttributeFactory.Create(CKA.CKA_CLASS, CKO.CKO_CERTIFICATE),
+                      session.Factories.ObjectAttributeFactory.Create(CKA.CKA_TOKEN, true),
+                      session.Factories.ObjectAttributeFactory.Create(CKA.CKA_CERTIFICATE_TYPE, CKC.CKC_X_509)
+                    };
+
+                    IObjectHandle certificate = session.FindAllObjects(searchAttribute).FirstOrDefault();
+
+                    if (certificate is null)
+                    {
+                        return "Certificate not found";
+                    }
+
+                    var attributeValues = session.GetAttributeValue(certificate, new List<CKA>
+                    {
+                        CKA.CKA_VALUE
+                    });
+
+
+                    var xcert = new X509Certificate2(attributeValues[0].GetValueAsByteArray());
+
+                    searchAttribute = new List<IObjectAttribute>()
+                    {
+                        session.Factories.ObjectAttributeFactory.Create(CKA.CKA_CLASS, CKO.CKO_PRIVATE_KEY),
+                        session.Factories.ObjectAttributeFactory.Create(CKA.CKA_KEY_TYPE,CKK.CKK_RSA)
+                    };
+
+                    IObjectHandle privateKeyHandler = session.FindAllObjects(searchAttribute).LastOrDefault();
+
+
+                    RSA privateKey = new TokenRSA(xcert, session, slot, privateKeyHandler);
+
+                    ContentInfo content = new ContentInfo(new Oid("1.2.840.113549.1.7.5"), data);
+
+
+                    SignedCms cms = new SignedCms(content, true);
+
+
+                    EssCertIDv2 bouncyCertificate = new EssCertIDv2(new Org.BouncyCastle.Asn1.X509.AlgorithmIdentifier(new DerObjectIdentifier("1.2.840.113549.1.9.16.2.47")), _hasher.HashBytes(xcert.RawData));
+
+                    var x = bouncyCertificate.HashAlgorithm;
+
+                    SigningCertificateV2 signerCertificateV2 = new SigningCertificateV2(new EssCertIDv2[] { bouncyCertificate });
+
+                    CmsSigner signer = new CmsSigner(xcert);
+
+                    signer.PrivateKey = privateKey;
+
+                    signer.DigestAlgorithm = new Oid("2.16.840.1.101.3.4.2.1");
+
+
+                    signer.SignedAttributes.Add(new Pkcs9SigningTime(DateTime.UtcNow));
+                    signer.SignedAttributes.Add(new AsnEncodedData(new Oid("1.2.840.113549.1.9.16.2.47"), signerCertificateV2.GetEncoded()));
+
+                    cms.ComputeSignature(signer);
+
+                    var output = cms.Encode();
+
+                    return Convert.ToBase64String(output);
                 }
             }
         }
