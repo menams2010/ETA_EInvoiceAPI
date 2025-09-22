@@ -2,7 +2,6 @@
 using InvoiceWebApp.Models;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
-using Microsoft.EntityFrameworkCore;
 using System.Text.Json;
 
 namespace InvoiceWebApp.Controllers
@@ -15,9 +14,9 @@ namespace InvoiceWebApp.Controllers
 
         public IActionResult Index()
         {
-            ViewBag.Companies = _context.Companies.ToList();
-            ViewBag.Envs = _context.EInvoiceEnvs.ToList();
-            return View(_context.CompEnvs.ToList());
+            ViewBag.Companies = _context.Companies.FindAll().ToList();
+            ViewBag.Envs = _context.EInvoiceEnvs.FindAll().ToList();
+            return View(_context.CompEnvs.FindAll().ToList());
         }
 
         [HttpPost]
@@ -25,8 +24,7 @@ namespace InvoiceWebApp.Controllers
         {
             if (ModelState.IsValid)
             {
-                _context.CompEnvs.Add(compEnv);
-                _context.SaveChanges();
+                _context.CompEnvs.Upsert(compEnv);
             }
             return RedirectToAction("Index");
         }
@@ -37,7 +35,6 @@ namespace InvoiceWebApp.Controllers
             if (ModelState.IsValid)
             {
                 _context.CompEnvs.Update(compEnv);
-                _context.SaveChanges();
             }
             return RedirectToAction("Index");
         }
@@ -45,19 +42,14 @@ namespace InvoiceWebApp.Controllers
         [HttpPost]
         public IActionResult Delete(int id)
         {
-            var obj = _context.CompEnvs.Find(id);
-            if (obj != null)
-            {
-                _context.CompEnvs.Remove(obj);
-                _context.SaveChanges();
-            }
+            _context.CompEnvs.Delete(id);
             return RedirectToAction("Index");
         }
 
         public IActionResult Export()
         {
-            var data = _context.CompEnvs.ToList();
-            var json = JsonSerializer.Serialize(data);
+            var data = _context.CompEnvs.FindAll().ToList();
+            var json = System.Text.Json.JsonSerializer.Serialize(data);
             return File(System.Text.Encoding.UTF8.GetBytes(json), "application/json", "CompEnvs.json");
         }
 
@@ -70,7 +62,7 @@ namespace InvoiceWebApp.Controllers
                 var content = reader.ReadToEnd();
                 try
                 {
-                    var items = JsonSerializer.Deserialize<List<CompEnv>>(content, new JsonSerializerOptions
+                    var items = System.Text.Json.JsonSerializer.Deserialize<List<CompEnv>>(content, new JsonSerializerOptions
                     {
                         PropertyNameCaseInsensitive = true
                     });
@@ -93,8 +85,7 @@ namespace InvoiceWebApp.Controllers
                         return RedirectToAction("Index");
                     }
 
-                    _context.CompEnvs.AddRange(items);
-                    _context.SaveChanges();
+                    _context.CompEnvs.InsertBulk(items);
                 }
                 catch (JsonException)
                 {

@@ -14,7 +14,7 @@ namespace InvoiceWebApp.Controllers
 
         public IActionResult Index()
         {
-            return View(_context.EInvoiceEnvs.ToList());
+            return View(_context.EInvoiceEnvs.FindAll().ToList());
         }
 
         [HttpPost]
@@ -22,8 +22,7 @@ namespace InvoiceWebApp.Controllers
         {
             if (ModelState.IsValid)
             {
-                _context.EInvoiceEnvs.Add(env);
-                _context.SaveChanges();
+                _context.EInvoiceEnvs.Upsert(env);
             }
             return RedirectToAction("Index");
         }
@@ -34,7 +33,6 @@ namespace InvoiceWebApp.Controllers
             if (ModelState.IsValid)
             {
                 _context.EInvoiceEnvs.Update(env);
-                _context.SaveChanges();
             }
             return RedirectToAction("Index");
         }
@@ -42,19 +40,14 @@ namespace InvoiceWebApp.Controllers
         [HttpPost]
         public IActionResult Delete(int id)
         {
-            var env = _context.EInvoiceEnvs.Find(id);
-            if (env != null)
-            {
-                _context.EInvoiceEnvs.Remove(env);
-                _context.SaveChanges();
-            }
+            _context.EInvoiceEnvs.Delete(id);
             return RedirectToAction("Index");
         }
 
         public IActionResult Export()
         {
-            var data = _context.EInvoiceEnvs.ToList();
-            var json = JsonSerializer.Serialize(data);
+            var data = _context.EInvoiceEnvs.FindAll().ToList();
+            var json = System.Text.Json.JsonSerializer.Serialize(data);
             return File(System.Text.Encoding.UTF8.GetBytes(json), "application/json", "EInvoiceEnvs.json");
         }
 
@@ -65,11 +58,10 @@ namespace InvoiceWebApp.Controllers
             {
                 using var reader = new StreamReader(jsonFile.OpenReadStream());
                 var content = reader.ReadToEnd();
-                var items = JsonSerializer.Deserialize<List<EInvoiceEnv>>(content);
+                var items = System.Text.Json.JsonSerializer.Deserialize<List<EInvoiceEnv>>(content);
                 if (items != null)
                 {
-                    _context.EInvoiceEnvs.AddRange(items);
-                    _context.SaveChanges();
+                    _context.EInvoiceEnvs.InsertBulk(items);
                 }
             }
             return RedirectToAction("Index");

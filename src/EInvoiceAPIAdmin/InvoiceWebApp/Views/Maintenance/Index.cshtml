@@ -1,0 +1,202 @@
+@{
+    ViewData["Title"] = "Maintenance";
+}
+<div class="row g-4">
+    <div class="col-12 col-lg-6">
+        <div class="card border-primary">
+            <div class="card-header bg-primary text-white">
+                <i class="bi bi-download"></i> Backup Database
+            </div>
+            <div class="card-body">
+                <p>Download a backup of the current LiteDB database.</p>
+                <form asp-controller="Maintenance" asp-action="Backup" method="post">
+                    @Html.AntiForgeryToken()
+                    <button type="submit" class="btn btn-primary"><i class="bi bi-cloud-download"></i> Backup</button>
+                </form>
+            </div>
+        </div>
+    </div>
+    <div class="col-12 col-lg-6">
+        <div class="card border-warning">
+            <div class="card-header bg-warning">
+                <i class="bi bi-upload"></i> Restore Database
+            </div>
+            <div class="card-body">
+                <p>Restore from a LiteDB backup file. This will replace the current data.</p>
+                <form id="restoreForm" asp-controller="Maintenance" asp-action="Restore" method="post" enctype="multipart/form-data">
+                    @Html.AntiForgeryToken()
+                    <div class="mb-3">
+                        <input type="file" class="form-control" name="backupFile" accept=".db" required />
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label">Tables to restore</label>
+                        <div class="form-check">
+                            <input class="form-check-input table-select-all" type="checkbox" id="restoreSelectAll" checked>
+                            <label class="form-check-label" for="restoreSelectAll">All tables</label>
+                        </div>
+                        <div class="row row-cols-1 row-cols-sm-2 g-2 ms-2 mt-1">
+                            <div class="col">
+                                <div class="form-check">
+                                    <input class="form-check-input table-option-restore" type="checkbox" value="tb_eInvoiceEnv" id="restore_tb_eInvoiceEnv">
+                                    <label class="form-check-label" for="restore_tb_eInvoiceEnv">tb_eInvoiceEnv</label>
+                                </div>
+                            </div>
+                            <div class="col">
+                                <div class="form-check">
+                                    <input class="form-check-input table-option-restore" type="checkbox" value="tb_Settings" id="restore_tb_Settings">
+                                    <label class="form-check-label" for="restore_tb_Settings">tb_Settings</label>
+                                </div>
+                            </div>
+                            <div class="col">
+                                <div class="form-check">
+                                    <input class="form-check-input table-option-restore" type="checkbox" value="tb_Company" id="restore_tb_Company">
+                                    <label class="form-check-label" for="restore_tb_Company">tb_Company</label>
+                                </div>
+                            </div>
+                            <div class="col">
+                                <div class="form-check">
+                                    <input class="form-check-input table-option-restore" type="checkbox" value="tb_CompEnv" id="restore_tb_CompEnv">
+                                    <label class="form-check-label" for="restore_tb_CompEnv">tb_CompEnv</label>
+                                </div>
+                            </div>
+                            <div class="col">
+                                <div class="form-check">
+                                    <input class="form-check-input table-option-restore" type="checkbox" value="tb_Login" id="restore_tb_Login">
+                                    <label class="form-check-label" for="restore_tb_Login">tb_Login</label>
+                                </div>
+                            </div>
+                        </div>
+                        <input type="hidden" name="tables" id="restoreTables" />
+                        <div class="form-text">Leave "All tables" checked to restore everything, or uncheck it and select specific tables.</div>
+                    </div>
+                    <button type="submit" class="btn btn-danger"><i class="bi bi-cloud-upload"></i> Restore</button>
+                </form>
+            </div>
+        </div>
+    </div>
+    <div class="col-12">
+        <div class="card border-success">
+            <div class="card-header bg-success text-white">
+                <i class="bi bi-filetype-sql"></i> Import From SQLite
+            </div>
+            <div class="card-body">
+                <p>Import data from an existing SQLite database file. Supported tables: tb_eInvoiceEnv, tb_Settings, tb_Company, tb_CompEnv, tb_Login.</p>
+                <form id="importForm" asp-controller="Maintenance" asp-action="ImportFromSqlite" method="post" enctype="multipart/form-data">
+                    @Html.AntiForgeryToken()
+                    <div class="mb-3">
+                        <input type="file" class="form-control" name="sqliteFile" accept=".db,.sqlite,.sqlite3" required />
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label">Tables to import</label>
+                        <div class="form-check">
+                            <input class="form-check-input table-select-all" type="checkbox" id="importSelectAll" checked>
+                            <label class="form-check-label" for="importSelectAll">All tables</label>
+                        </div>
+                        <div class="row row-cols-1 row-cols-sm-2 g-2 ms-2 mt-1">
+                            <div class="col">
+                                <div class="form-check">
+                                    <input class="form-check-input table-option-import" type="checkbox" value="tb_eInvoiceEnv" id="import_tb_eInvoiceEnv">
+                                    <label class="form-check-label" for="import_tb_eInvoiceEnv">tb_eInvoiceEnv</label>
+                                </div>
+                            </div>
+                            <div class="col">
+                                <div class="form-check">
+                                    <input class="form-check-input table-option-import" type="checkbox" value="tb_Settings" id="import_tb_Settings">
+                                    <label class="form-check-label" for="import_tb_Settings">tb_Settings</label>
+                                </div>
+                            </div>
+                            <div class="col">
+                                <div class="form-check">
+                                    <input class="form-check-input table-option-import" type="checkbox" value="tb_Company" id="import_tb_Company">
+                                    <label class="form-check-label" for="import_tb_Company">tb_Company</label>
+                                </div>
+                            </div>
+                            <div class="col">
+                                <div class="form-check">
+                                    <input class="form-check-input table-option-import" type="checkbox" value="tb_CompEnv" id="import_tb_CompEnv">
+                                    <label class="form-check-label" for="import_tb_CompEnv">tb_CompEnv</label>
+                                </div>
+                            </div>
+                            <div class="col">
+                                <div class="form-check">
+                                    <input class="form-check-input table-option-import" type="checkbox" value="tb_Login" id="import_tb_Login">
+                                    <label class="form-check-label" for="import_tb_Login">tb_Login</label>
+                                </div>
+                            </div>
+                        </div>
+                        <input type="hidden" name="tables" id="importTables" />
+                        <div class="form-text">Leave "All tables" checked to import everything, or uncheck it and select specific tables.</div>
+                    </div>
+                    <button type="submit" class="btn btn-success"><i class="bi bi-file-earmark-arrow-up"></i> Import</button>
+                </form>
+            </div>
+        </div>
+    </div>
+</div>
+
+@if (ViewBag.Error != null)
+{
+    <div class="alert alert-danger mt-4">@ViewBag.Error</div>
+}
+@if (ViewBag.Message != null)
+{
+    <div class="alert alert-success mt-4">@ViewBag.Message</div>
+}
+
+@section Scripts {
+<script>
+    // Ensure the DOM exists before binding (section is rendered in <head> in layout)
+    document.addEventListener('DOMContentLoaded', function() {
+        function bindTableSelection(formId, selectAllId, optionClass, hiddenId) {
+            const form = document.getElementById(formId);
+            const selectAll = document.getElementById(selectAllId);
+            const opts = Array.from(document.getElementsByClassName(optionClass));
+            const hidden = document.getElementById(hiddenId);
+
+            // Guard if elements are not found
+            if (!form || !selectAll || !hidden || opts.length === 0) return;
+
+            function syncState() {
+                const anyOptionChecked = opts.some(cb => cb.checked);
+                if (selectAll.checked) {
+                    // All tables selected -> disable specific options
+                    opts.forEach(cb => { cb.checked = false; cb.disabled = true; });
+                    selectAll.disabled = false; // keep All enabled
+                } else {
+                    // Specific selection mode -> enable options
+                    opts.forEach(cb => { cb.disabled = false; });
+                    // Do not disable the All option anymore; keep it enabled so user can switch back
+                    selectAll.disabled = false;
+                }
+
+                // Hidden field
+                hidden.value = selectAll.checked ? '' : opts.filter(cb => cb.checked).map(cb => cb.value).join(',');
+            }
+
+            selectAll.addEventListener('change', function () {
+                // If user selects All, clear any specific selections
+                if (selectAll.checked) {
+                    opts.forEach(cb => { cb.checked = false; });
+                }
+                syncState();
+            });
+
+            opts.forEach(cb => cb.addEventListener('change', function() {
+                // If user selects a specific table, simply uncheck All (but do not disable it)
+                if (this.checked) selectAll.checked = false;
+                syncState();
+            }));
+
+            form.addEventListener('submit', function() {
+                syncState();
+            });
+
+            // initial state
+            syncState();
+        }
+
+        bindTableSelection('restoreForm', 'restoreSelectAll', 'table-option-restore', 'restoreTables');
+        bindTableSelection('importForm', 'importSelectAll', 'table-option-import', 'importTables');
+    });
+</script>
+}

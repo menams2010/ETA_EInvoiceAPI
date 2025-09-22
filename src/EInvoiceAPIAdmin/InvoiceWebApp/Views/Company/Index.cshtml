@@ -115,7 +115,8 @@
                                 </div>
                                 <div class="mb-3">
                                     <label>Use XML to JSON Converter</label>
-                                    <input class="form-check-input" name="UseXMLTOJSON" type="checkbox" value="true" @(item.UseXMLTOJSON.ToLower() == "true" ? "checked" : "") />
+                                    <input class="form-check-input" name="UseXMLTOJSON" type="checkbox" value="true"
+                                           @(string.Equals(item.UseXMLTOJSON, "true", StringComparison.OrdinalIgnoreCase) ? "checked" : "") />
                                 </div>
                             </div>
                             <div class="modal-footer">

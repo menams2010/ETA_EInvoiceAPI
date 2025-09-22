@@ -1,81 +1,78 @@
-﻿using InvoiceWebApp.Models;
-using Microsoft.AspNetCore.Connections;
-using Microsoft.EntityFrameworkCore;
+using InvoiceWebApp.Models;
+using LiteDB;
 
 namespace InvoiceWebApp.Data
 {
-    public class AppDbContext : DbContext
+    public class AppDbContext : IDisposable
     {
-        public DbSet<Company> Companies { get; set; }
-        public DbSet<CompEnv> CompEnvs { get; set; }
-        public DbSet<EInvoiceEnv> EInvoiceEnvs { get; set; }
-        public DbSet<Settings> Settings { get; set; }
-        public DbSet<Login> Logins { get; set; }
+        private readonly LiteDatabase _db;
+        private readonly bool _ownsDb;
 
+        public ILiteCollection<Company> Companies => _db.GetCollection<Company>("tb_Company");
+        public ILiteCollection<CompEnv> CompEnvs => _db.GetCollection<CompEnv>("tb_CompEnv");
+        public ILiteCollection<EInvoiceEnv> EInvoiceEnvs => _db.GetCollection<EInvoiceEnv>("tb_eInvoiceEnv");
+        public ILiteCollection<Settings> Settings => _db.GetCollection<Settings>("tb_Settings");
+        public ILiteCollection<Login> Logins => _db.GetCollection<Login>("tb_Login");
 
-        public AppDbContext(DbContextOptions<AppDbContext> options) : base(options)
+        public AppDbContext(string databasePath)
         {
-            // Ensure database and tables are created
-            var dbCreated = Database.EnsureCreated();
+            _db = new LiteDatabase(databasePath);
+            _ownsDb = true;
+            ConfigureMapper();
+            EnsureSchemaAndSeed();
+        }
 
-            if (dbCreated)
+        public AppDbContext(LiteDatabase db)
+        {
+            _db = db;
+            _ownsDb = false;
+            ConfigureMapper();
+            EnsureSchemaAndSeed();
+        }
+
+        private static void ConfigureMapper()
+        {
+            var m = BsonMapper.Global;
+            // Ensure Id as primary key; default name "Id" is detected automatically.
+            // Additional configuration can go here if needed.
+        }
+
+        private void EnsureSchemaAndSeed()
+        {
+            // Ensure indexes on Id
+            Companies.EnsureIndex(x => x.Id, true);
+            CompEnvs.EnsureIndex(x => x.Id, true);
+            EInvoiceEnvs.EnsureIndex(x => x.Id, true);
+            Settings.EnsureIndex(x => x.Id, true);
+            Logins.EnsureIndex(x => x.Id, true);
+
+            if (Logins.Count() == 0)
             {
-                Database.ExecuteSqlRaw(@"
-                    INSERT INTO [tb_Login] ([Id],[u_name],[u_pass],[IsInitial]) VALUES (1,'mina.mouris','Mariam1995',1);
-                    INSERT INTO [tb_eInvoiceEnv] ([Id],[EnvName],[EnvTokenUrl],[EnvInvoicingUrl]) VALUES (1,'PreProd','https://id.preprod.eta.gov.eg/connect/token','https://api.preprod.invoicing.eta.gov.eg/api/v1/');
-                    INSERT INTO [tb_eInvoiceEnv] ([Id],[EnvName],[EnvTokenUrl],[EnvInvoicingUrl]) VALUES (2,'Prod','https://id.eta.gov.eg/connect/token','https://api.invoicing.eta.gov.eg/api/v1/');
-                    INSERT INTO [tb_Settings] ([Id],[SettingName],[SettingValue]) VALUES (1,'DBVersion','2025-06-28 19:40:00');
-                    INSERT INTO [tb_Settings] ([Id],[SettingName],[SettingValue]) VALUES (2,'UseImpersonation','false');
-                    INSERT INTO [tb_Settings] ([Id],[SettingName],[SettingValue]) VALUES (3,'ImpDomain',NULL);
-                    INSERT INTO [tb_Settings] ([Id],[SettingName],[SettingValue]) VALUES (4,'ImpUsername',NULL);
-                    INSERT INTO [tb_Settings] ([Id],[SettingName],[SettingValue]) VALUES (5,'ImpPassword',NULL);
-                    INSERT INTO [tb_Settings] ([Id],[SettingName],[SettingValue]) VALUES (6,'DateTimeFormat','dd/MM/yyyy hh:mm:ss tt');
-                    INSERT INTO [tb_Settings] ([Id],[SettingName],[SettingValue]) VALUES (7,'CertCacheLastRefresh',NULL);
-                    CREATE VIEW V_Data as  
-                        Select CompanyCode,CompanyName,TokenSerial,TokenPin,CertSerialNum,EnvId,EnvName,EnvTokenUrl,EnvInvoicingUrl,ClientId,ClientSecret,str_token,time_get,UseXMLTOJSON
-                        From tb_company 
-                        Left Join tb_CompEnv ON tb_CompEnv.CompanyId = tb_company.Id 
-                        Left Join tb_eInvoiceEnv ON tb_eInvoiceEnv.Id = tb_CompEnv.EnvId;
-                ");
+                Logins.Insert(new Login { Id = 1, u_name = "mina.mouris", u_pass = "Mariam1995", IsInitial = true });
+            }
+            if (EInvoiceEnvs.Count() == 0)
+            {
+                EInvoiceEnvs.Insert(new EInvoiceEnv { Id = 1, EnvName = "PreProd", EnvTokenUrl = "https://id.preprod.eta.gov.eg/connect/token", EnvInvoicingUrl = "https://api.preprod.invoicing.eta.gov.eg/api/v1/" });
+                EInvoiceEnvs.Insert(new EInvoiceEnv { Id = 2, EnvName = "Prod", EnvTokenUrl = "https://id.eta.gov.eg/connect/token", EnvInvoicingUrl = "https://api.invoicing.eta.gov.eg/api/v1/" });
+            }
+            if (Settings.Count() == 0)
+            {
+                Settings.Insert(new Settings { Id = 1, SettingName = "DBVersion", SettingValue = "2025-06-28 19:40:00" });
+                Settings.Insert(new Settings { Id = 2, SettingName = "UseImpersonation", SettingValue = "false" });
+                Settings.Insert(new Settings { Id = 3, SettingName = "ImpDomain", SettingValue = null });
+                Settings.Insert(new Settings { Id = 4, SettingName = "ImpUsername", SettingValue = null });
+                Settings.Insert(new Settings { Id = 5, SettingName = "ImpPassword", SettingValue = null });
+                Settings.Insert(new Settings { Id = 6, SettingName = "DateTimeFormat", SettingValue = "yyyy-MM-dd HH:mm:ss" });
+                Settings.Insert(new Settings { Id = 7, SettingName = "CertCacheLastRefresh", SettingValue = null });
             }
         }
 
-        protected override void OnModelCreating(ModelBuilder modelBuilder)
+        public void Dispose()
         {
-            modelBuilder.Entity<Company>(entity =>
+            if (_ownsDb)
             {
-                entity.ToTable("tb_Company");
-                //entity.Property(e => e.UseXMLTOJSON).IsRequired(false);
-                // All string properties are required by default (non-nullable in model)
-            });
-
-            modelBuilder.Entity<CompEnv>(entity =>
-            {
-                entity.ToTable("tb_CompEnv");
-                entity.Property(e => e.ClientId).IsRequired(false);
-                entity.Property(e => e.ClientSecret).IsRequired(false);
-                entity.Property(e => e.str_token).IsRequired(false);
-                entity.Property(e => e.time_get).IsRequired(false);
-            });
-
-            modelBuilder.Entity<EInvoiceEnv>(entity =>
-            {
-                entity.ToTable("tb_eInvoiceEnv");
-                // All string properties are required by default (non-nullable in model)
-            });
-
-            modelBuilder.Entity<Settings>(entity =>
-            {
-                entity.ToTable("tb_Settings");
-                entity.Property(e => e.SettingValue).IsRequired(false);
-                // All string properties are required by default (non-nullable in model)
-            });
-
-            modelBuilder.Entity<Login>(entity =>
-            {
-                entity.ToTable("tb_Login");
-                // All string properties are required by default (non-nullable in model)
-            });
+                _db?.Dispose();
+            }
         }
     }
 }

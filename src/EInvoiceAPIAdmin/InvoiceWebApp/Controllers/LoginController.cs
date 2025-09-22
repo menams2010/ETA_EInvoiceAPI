@@ -2,7 +2,6 @@
 using InvoiceWebApp.Models;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
-using System.Text.Json;
 
 namespace InvoiceWebApp.Controllers
 {
@@ -15,7 +14,7 @@ namespace InvoiceWebApp.Controllers
         [AllowAnonymous]
         public IActionResult Index()
         {
-            return View(_context.Logins.ToList());
+            return View(_context.Logins.FindAll().ToList());
         }
 
         [HttpPost]
@@ -23,8 +22,7 @@ namespace InvoiceWebApp.Controllers
         {
             if (ModelState.IsValid)
             {
-                _context.Logins.Add(obj);
-                _context.SaveChanges();
+                _context.Logins.Upsert(obj);
             }
             return RedirectToAction("Index");
         }
@@ -35,7 +33,6 @@ namespace InvoiceWebApp.Controllers
             if (ModelState.IsValid)
             {
                 _context.Logins.Update(obj);
-                _context.SaveChanges();
             }
             return RedirectToAction("Index");
         }
@@ -43,19 +40,14 @@ namespace InvoiceWebApp.Controllers
         [HttpPost]
         public IActionResult Delete(int id)
         {
-            var obj = _context.Logins.Find(id);
-            if (obj != null)
-            {
-                _context.Logins.Remove(obj);
-                _context.SaveChanges();
-            }
+            _context.Logins.Delete(id);
             return RedirectToAction("Index");
         }
 
         public IActionResult Export()
         {
-            var data = _context.Logins.ToList();
-            var json = JsonSerializer.Serialize(data);
+            var data = _context.Logins.FindAll().ToList();
+            var json = System.Text.Json.JsonSerializer.Serialize(data);
             return File(System.Text.Encoding.UTF8.GetBytes(json), "application/json", "Logins.json");
         }
 
@@ -66,11 +58,10 @@ namespace InvoiceWebApp.Controllers
             {
                 using var reader = new StreamReader(jsonFile.OpenReadStream());
                 var content = reader.ReadToEnd();
-                var items = JsonSerializer.Deserialize<List<Login>>(content);
+                var items = System.Text.Json.JsonSerializer.Deserialize<List<Login>>(content);
                 if (items != null)
                 {
-                    _context.Logins.AddRange(items);
-                    _context.SaveChanges();
+                    _context.Logins.InsertBulk(items);
                 }
             }
             return RedirectToAction("Index");

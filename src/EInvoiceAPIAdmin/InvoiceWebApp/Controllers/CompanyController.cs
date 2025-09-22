@@ -2,7 +2,6 @@
 using InvoiceWebApp.Models;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
-using Microsoft.EntityFrameworkCore;
 using Microsoft.Win32.SafeHandles;
 using Net.Pkcs11Interop.Common;
 using Net.Pkcs11Interop.HighLevelAPI;
@@ -10,8 +9,6 @@ using System.Runtime.InteropServices;
 using System.Runtime.Versioning;
 using System.Security.Cryptography.X509Certificates;
 using System.Security.Principal;
-using System.Text;
-using System.Text.Json;
 
 namespace InvoiceWebApp.Controllers
 {
@@ -31,7 +28,7 @@ namespace InvoiceWebApp.Controllers
         }
         public IActionResult Index()
         {
-            return View(_context.Companies.ToList());
+            return View(_context.Companies.FindAll().ToList());
         }
 
         [HttpGet]
@@ -41,57 +38,60 @@ namespace InvoiceWebApp.Controllers
 
             if (RuntimeInformation.IsOSPlatform(OSPlatform.Windows))
             {
-                // Retrieve credentials from Settings table
-                string domainName = _context.Settings.FirstOrDefault(s => s.SettingName == "ImpDomain")?.SettingValue ?? "";
-                string userName = _context.Settings.FirstOrDefault(s => s.SettingName == "ImpUsername")?.SettingValue ?? "";
-                string password = _context.Settings.FirstOrDefault(s => s.SettingName == "ImpPassword")?.SettingValue ?? "";
+                var useImpersonation = string.Equals(
+                    _context.Settings.FindOne(s => s.SettingName == "UseImpersonation")?.SettingValue,
+                    "true", StringComparison.OrdinalIgnoreCase);
 
-                const int LOGON32_PROVIDER_DEFAULT = 0;
-                const int LOGON32_LOGON_INTERACTIVE = 2;
+                string domainName = _context.Settings.FindOne(s => s.SettingName == "ImpDomain")?.SettingValue ?? "";
+                string userName  = _context.Settings.FindOne(s => s.SettingName == "ImpUsername")?.SettingValue ?? "";
+                string password  = _context.Settings.FindOne(s => s.SettingName == "ImpPassword")?.SettingValue ?? "";
 
-                SafeAccessTokenHandle safeAccessTokenHandle;
-                bool returnValue = LogonUser(userName, domainName, password, LOGON32_LOGON_INTERACTIVE, LOGON32_PROVIDER_DEFAULT, out safeAccessTokenHandle);
-
-                if (!returnValue)
+                if (useImpersonation && !string.IsNullOrWhiteSpace(userName) && !string.IsNullOrWhiteSpace(password))
                 {
-                    int ret = Marshal.GetLastWin32Error();
-                    throw new System.ComponentModel.Win32Exception(ret);
-                }
+                    const int LOGON32_PROVIDER_DEFAULT = 0;
+                    const int LOGON32_LOGON_INTERACTIVE = 2;
 
-                using (safeAccessTokenHandle)
-                {
-                    WindowsIdentity.RunImpersonated(safeAccessTokenHandle, () =>
+                    SafeAccessTokenHandle token;
+                    // Use null for domain if not provided (UPN or local user)
+                    string? domainArg = string.IsNullOrWhiteSpace(domainName) ? null : domainName;
+
+                    bool ok = LogonUser(userName, domainArg, password, LOGON32_LOGON_INTERACTIVE, LOGON32_PROVIDER_DEFAULT, out token);
+                    if (!ok)
                     {
-                        X509Store store = new X509Store(StoreName.My, StoreLocation.CurrentUser);
-                        store.Open(OpenFlags.MaxAllowed);
+                        int ret = Marshal.GetLastWin32Error();
+                        return Content(System.Text.Json.JsonSerializer.Serialize(new { error = new System.ComponentModel.Win32Exception(ret).Message, code = ret }), "application/json");
+                    }
 
-                        foreach (X509Certificate2 cert in store.Certificates)
+                    using (token)
+                    {
+                        WindowsIdentity.RunImpersonated(token, () =>
                         {
-                            certificates.Add(new
+                            using var store = new X509Store(StoreName.My, StoreLocation.CurrentUser);
+                            store.Open(OpenFlags.ReadOnly);
+                            foreach (var cert in store.Certificates)
                             {
-                                friendlyName = cert.FriendlyName ?? "",
-                                issuer = cert.Issuer,
-                                issuerName = cert.IssuerName?.Name ?? "",
-                                notBefore = cert.NotBefore.ToUniversalTime().ToString("yyyy-MM-ddTHH:mm:ssZ"),
-                                notAfter = cert.NotAfter.ToUniversalTime().ToString("yyyy-MM-ddTHH:mm:ssZ"),
-                                serialNumber = cert.SerialNumber,
-                                subject = cert.Subject,
-                                subjectName = cert.SubjectName?.Name ?? "",
-                                version = cert.Version.ToString()
-                            });
-                        }
-                        store.Close();
-                    });
+                                certificates.Add(new
+                                {
+                                    friendlyName = cert.FriendlyName ?? "",
+                                    issuer = cert.Issuer,
+                                    issuerName = cert.IssuerName?.Name ?? "",
+                                    notBefore = cert.NotBefore.ToUniversalTime().ToString("yyyy-MM-ddTHH:mm:ssZ"),
+                                    notAfter = cert.NotAfter.ToUniversalTime().ToString("yyyy-MM-ddTHH:mm:ssZ"),
+                                    serialNumber = cert.SerialNumber,
+                                    subject = cert.Subject,
+                                    subjectName = cert.SubjectName?.Name ?? "",
+                                    version = cert.Version.ToString()
+                                });
+                            }
+                        });
+                    }
                 }
-            }
-            else if (RuntimeInformation.IsOSPlatform(OSPlatform.Linux))
-            {
-                try
+                else
                 {
-                    X509Store store = new X509Store(StoreName.My, StoreLocation.CurrentUser);
+                    // No impersonation; use current process identity
+                    using var store = new X509Store(StoreName.My, StoreLocation.CurrentUser);
                     store.Open(OpenFlags.ReadOnly);
-
-                    foreach (X509Certificate2 cert in store.Certificates)
+                    foreach (var cert in store.Certificates)
                     {
                         certificates.Add(new
                         {
@@ -106,19 +106,41 @@ namespace InvoiceWebApp.Controllers
                             version = cert.Version.ToString()
                         });
                     }
-                    store.Close();
+                }
+            }
+            else if (RuntimeInformation.IsOSPlatform(OSPlatform.Linux))
+            {
+                try
+                {
+                    using var store = new X509Store(StoreName.My, StoreLocation.CurrentUser);
+                    store.Open(OpenFlags.ReadOnly);
+                    foreach (var cert in store.Certificates)
+                    {
+                        certificates.Add(new
+                        {
+                            friendlyName = cert.FriendlyName ?? "",
+                            issuer = cert.Issuer,
+                            issuerName = cert.IssuerName?.Name ?? "",
+                            notBefore = cert.NotBefore.ToUniversalTime().ToString("yyyy-MM-ddTHH:mm:ssZ"),
+                            notAfter = cert.NotAfter.ToUniversalTime().ToString("yyyy-MM-ddTHH:mm:ssZ"),
+                            serialNumber = cert.SerialNumber,
+                            subject = cert.Subject,
+                            subjectName = cert.SubjectName?.Name ?? "",
+                            version = cert.Version.ToString()
+                        });
+                    }
                 }
                 catch (Exception ex)
                 {
-                    return Content(JsonSerializer.Serialize(new { error = ex.Message }), "application/json");
+                    return Content(System.Text.Json.JsonSerializer.Serialize(new { error = ex.Message }), "application/json");
                 }
             }
             else
             {
-                return Content(JsonSerializer.Serialize(new { error = "Unsupported OS" }), "application/json");
+                return Content(System.Text.Json.JsonSerializer.Serialize(new { error = "Unsupported OS" }), "application/json");
             }
 
-            var json = JsonSerializer.Serialize(new { certificates });
+            var json = System.Text.Json.JsonSerializer.Serialize(new { certificates });
             return Content(json, "application/json");
         }
 
@@ -133,7 +155,7 @@ namespace InvoiceWebApp.Controllers
             else if (RuntimeInformation.IsOSPlatform(OSPlatform.Linux))
                 pkcs11LibPath = "/usr/lib/libeps2003csp11.so"; // Adjust path as needed
             else
-                return Content(JsonSerializer.Serialize(new { error = "Unsupported OS" }), "application/json");
+                return Content(System.Text.Json.JsonSerializer.Serialize(new { error = "Unsupported OS" }), "application/json");
 
             using (IPkcs11Library pkcs11Library = factories.Pkcs11LibraryFactory.LoadPkcs11Library(factories, pkcs11LibPath, AppType.MultiThreaded))
             {
@@ -150,19 +172,9 @@ namespace InvoiceWebApp.Controllers
                 }
             }
 
-            var json = JsonSerializer.Serialize(new { tokens });
+            var json = System.Text.Json.JsonSerializer.Serialize(new { tokens });
             return Content(json, "application/json");
         }
-
-        //[HttpGet]
-        //public async Task<IActionResult> Certificate()
-        //{
-        //    var apiUrl = _configuration["CertificateApiUrl"];
-        //    using var httpClient = new HttpClient();
-        //    var response = await httpClient.GetAsync(apiUrl);
-        //    var content = await response.Content.ReadAsStringAsync();
-        //    return Content(content, "application/json");
-        //}
 
         [HttpPost]
         public IActionResult Create(Company company)
@@ -181,8 +193,8 @@ namespace InvoiceWebApp.Controllers
 
             if (ModelState.IsValid)
             {
-                _context.Companies.Add(company);
-                _context.SaveChanges();
+                // LiteDB will auto assign Id if 0
+                _context.Companies.Upsert(company);
             }
             return RedirectToAction("Index");
         }
@@ -205,7 +217,6 @@ namespace InvoiceWebApp.Controllers
             if (ModelState.IsValid)
             {
                 _context.Companies.Update(company);
-                _context.SaveChanges();
             }
             return RedirectToAction("Index");
         }
@@ -213,19 +224,14 @@ namespace InvoiceWebApp.Controllers
         [HttpPost]
         public IActionResult Delete(int id)
         {
-            var company = _context.Companies.Find(id);
-            if (company != null)
-            {
-                _context.Companies.Remove(company);
-                _context.SaveChanges();
-            }
+            _context.Companies.Delete(id);
             return RedirectToAction("Index");
         }
 
         public IActionResult Export()
         {
-            var data = _context.Companies.ToList();
-            var json = JsonSerializer.Serialize(data);
+            var data = _context.Companies.FindAll().ToList();
+            var json = System.Text.Json.JsonSerializer.Serialize(data);
             return File(System.Text.Encoding.UTF8.GetBytes(json), "application/json", "Companies.json");
         }
 
@@ -236,11 +242,10 @@ namespace InvoiceWebApp.Controllers
             {
                 using var reader = new StreamReader(jsonFile.OpenReadStream());
                 var content = reader.ReadToEnd();
-                var items = JsonSerializer.Deserialize<List<Company>>(content);
+                var items = System.Text.Json.JsonSerializer.Deserialize<List<Company>>(content);
                 if (items != null)
                 {
-                    _context.Companies.AddRange(items);
-                    _context.SaveChanges();
+                    _context.Companies.InsertBulk(items);
                 }
             }
             return RedirectToAction("Index");
@@ -254,10 +259,10 @@ namespace InvoiceWebApp.Controllers
             var certificates = new List<object>();
             try
             {
-                X509Store store = new X509Store(StoreName.My, StoreLocation.CurrentUser);
+                using var store = new X509Store(StoreName.My, StoreLocation.CurrentUser);
                 store.Open(OpenFlags.ReadOnly);
 
-                foreach (X509Certificate2 cert in store.Certificates)
+                foreach (var cert in store.Certificates)
                 {
                     certificates.Add(new
                     {
@@ -276,10 +281,10 @@ namespace InvoiceWebApp.Controllers
             }
             catch (Exception ex)
             {
-                return Content(JsonSerializer.Serialize(new { error = ex.Message }), "application/json");
+                return Content(System.Text.Json.JsonSerializer.Serialize(new { error = ex.Message }), "application/json");
             }
 
-            var json = JsonSerializer.Serialize(new { certificates });
+            var json = System.Text.Json.JsonSerializer.Serialize(new { certificates });
             return Content(json, "application/json");
         }
 

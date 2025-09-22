@@ -1,6 +1,6 @@
 using InvoiceWebApp.Data;
-using Microsoft.EntityFrameworkCore;
 using Microsoft.AspNetCore.Authentication.Cookies;
+using LiteDB;
 
 //var MyAllowSpecificOrigins = "_myAllowSpecificOrigins";
 
@@ -10,9 +10,14 @@ builder.Services.AddControllersWithViews();
 builder.Services.AddControllers(); // This registers controllers
 builder.Services.AddRazorPages();
 
-builder.Services.AddDbContext<AppDbContext>(options =>
-//options.UseSqlite(builder.Configuration.GetConnectionString("DefaultConnection")));
-options.UseSqlite("Data Source=" + AppContext.BaseDirectory + @"\..\config.db;"));
+// Register LiteDB
+var dbPath = Path.GetFullPath(Path.Combine(AppContext.BaseDirectory, "..", "config.db"));
+builder.Services.AddSingleton<LiteDatabase>(_ => new LiteDatabase($"Filename={dbPath};Password=@Mina&29012017&Mariam@;Connection=shared"));
+builder.Services.AddScoped<AppDbContext>(sp =>
+{
+    var liteDb = sp.GetRequiredService<LiteDatabase>();
+    return new AppDbContext(liteDb);
+});
 
 // Enable session
 builder.Services.AddDistributedMemoryCache();
