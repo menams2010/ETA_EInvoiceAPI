@@ -1,5 +1,7 @@
 using InvoiceWebApp.Models;
 using LiteDB;
+using System.Collections.Generic;
+using System.Linq;
 
 namespace InvoiceWebApp.Data
 {
@@ -8,17 +10,18 @@ namespace InvoiceWebApp.Data
         private readonly LiteDatabase _db;
         private readonly bool _ownsDb;
 
-        public ILiteCollection<Company> Companies => _db.GetCollection<Company>("tb_Company");
-        public ILiteCollection<CompEnv> CompEnvs => _db.GetCollection<CompEnv>("tb_CompEnv");
-        public ILiteCollection<EInvoiceEnv> EInvoiceEnvs => _db.GetCollection<EInvoiceEnv>("tb_eInvoiceEnv");
-        public ILiteCollection<Settings> Settings => _db.GetCollection<Settings>("tb_Settings");
-        public ILiteCollection<Login> Logins => _db.GetCollection<Login>("tb_Login");
+        public ILiteCollection<Company> Companies => _db.GetCollection<Company>("Companies");
+        public ILiteCollection<CompEnv> CompEnvs => _db.GetCollection<CompEnv>("CompEnvs");
+        public ILiteCollection<EInvoiceEnv> EInvoiceEnvs => _db.GetCollection<EInvoiceEnv>("EInvoiceEnvs");
+        public ILiteCollection<Settings> Settings => _db.GetCollection<Settings>("Settings");
+        public ILiteCollection<Login> Logins => _db.GetCollection<Login>("Logins");
 
         public AppDbContext(string databasePath)
         {
             _db = new LiteDatabase(databasePath);
             _ownsDb = true;
             ConfigureMapper();
+            MigrateLegacyCollections();
             EnsureSchemaAndSeed();
         }
 
@@ -27,6 +30,7 @@ namespace InvoiceWebApp.Data
             _db = db;
             _ownsDb = false;
             ConfigureMapper();
+            MigrateLegacyCollections();
             EnsureSchemaAndSeed();
         }
 
@@ -35,6 +39,57 @@ namespace InvoiceWebApp.Data
             var m = BsonMapper.Global;
             // Ensure Id as primary key; default name "Id" is detected automatically.
             // Additional configuration can go here if needed.
+        }
+
+        private void MigrateLegacyCollections()
+        {
+            // If old collections exist, copy data into the new collections
+            // We migrate from:
+            //   - legacy "tb_*" names
+            //   - previous singular names (Company, CompEnv, eInvoiceEnv, Login)
+            // Only copy when the target collection is empty to avoid duplications
+            HashSet<string> names;
+            try
+            {
+                names = _db.GetCollectionNames().ToHashSet(System.StringComparer.OrdinalIgnoreCase);
+            }
+            catch
+            {
+                // In case GetCollectionNames is unavailable, skip migration silently
+                return;
+            }
+
+            void CopyIfExists<T>(string oldName, string newName)
+            {
+                if (!names.Contains(oldName)) return;
+                var target = _db.GetCollection<T>(newName);
+                if (target.Count() > 0) return;
+                var source = _db.GetCollection<T>(oldName);
+                foreach (var doc in source.FindAll())
+                {
+                    target.Upsert(doc);
+                }
+            }
+
+            // Companies
+            CopyIfExists<Company>("tb_Company", "Companies");
+            CopyIfExists<Company>("Company", "Companies");
+
+            // CompEnvs
+            CopyIfExists<CompEnv>("tb_CompEnv", "CompEnvs");
+            CopyIfExists<CompEnv>("CompEnv", "CompEnvs");
+
+            // EInvoiceEnvs
+            CopyIfExists<EInvoiceEnv>("tb_eInvoiceEnv", "EInvoiceEnvs");
+            CopyIfExists<EInvoiceEnv>("eInvoiceEnv", "EInvoiceEnvs");
+
+            // Settings (already plural previously)
+            CopyIfExists<Settings>("tb_Settings", "Settings");
+            // No need to copy from "Settings" to "Settings"
+
+            // Logins
+            CopyIfExists<Login>("tb_Login", "Logins");
+            CopyIfExists<Login>("Login", "Logins");
         }
 
         private void EnsureSchemaAndSeed()
