@@ -1,6 +1,7 @@
 using InvoiceWebApp.Data;
 using Microsoft.AspNetCore.Authentication.Cookies;
 using LiteDB;
+using InvoiceWebApp.Services;
 
 //var MyAllowSpecificOrigins = "_myAllowSpecificOrigins";
 
@@ -18,6 +19,10 @@ builder.Services.AddScoped<AppDbContext>(sp =>
     var liteDb = sp.GetRequiredService<LiteDatabase>();
     return new AppDbContext(liteDb);
 });
+
+builder.Services.AddSingleton<SmtpEmailSender>();
+builder.Services.AddScoped<AlertRunner>();
+builder.Services.AddHostedService<AlertBackgroundService>();
 
 // Enable session
 builder.Services.AddDistributedMemoryCache();

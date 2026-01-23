@@ -146,6 +146,21 @@ body {
                         </a>
                     </li>
                     <li class="nav-item">
+                        <a class="nav-link @((currentController == "alertrules" && currentAction == "index") ? "active" : "")" asp-controller="AlertRules" asp-action="Index">
+                            <i class="bi bi-bell"></i> <span>Alert Rules</span>
+                        </a>
+                    </li>
+                    <li class="nav-item">
+                        <a class="nav-link @((currentController == "smtpprofiles" && currentAction == "index") ? "active" : "")" asp-controller="SmtpProfiles" asp-action="Index">
+                            <i class="bi bi-envelope"></i> <span>SMTP Profiles</span>
+                        </a>
+                    </li>
+                    <li class="nav-item">
+                        <a class="nav-link @((currentController == "emailtemplates" && currentAction == "index") ? "active" : "")" asp-controller="EmailTemplates" asp-action="Index">
+                            <i class="bi bi-file-earmark-text"></i> <span>Email Templates</span>
+                        </a>
+                    </li>
+                    <li class="nav-item">
                         <a class="nav-link @((currentController == "login" && currentAction == "index") ? "active" : "")" asp-controller="Login" asp-action="Index">
                             <i class="bi bi-person"></i> <span>Login Users</span>
                         </a>

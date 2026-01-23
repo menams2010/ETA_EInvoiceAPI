@@ -27,7 +27,7 @@
             }
 
             .compenv-table th:nth-child(3), .compenv-table td:nth-child(3) {
-                width: 140px;
+                width: 90px;
             }
 
             .compenv-table th:nth-child(4), .compenv-table td:nth-child(4) {
@@ -39,14 +39,18 @@
             }
 
             .compenv-table th:nth-child(6), .compenv-table td:nth-child(6) {
-                width: 200px;
-            }
-
-            .compenv-table th:nth-child(7), .compenv-table td:nth-child(7) {
                 width: 110px;
             }
 
+            .compenv-table th:nth-child(7), .compenv-table td:nth-child(7) {
+                width: 200px;
+            }
+
             .compenv-table th:nth-child(8), .compenv-table td:nth-child(8) {
+                width: 110px;
+            }
+
+            .compenv-table th:nth-child(9), .compenv-table td:nth-child(9) {
                 width: 110px;
             }
 </style>
@@ -71,6 +75,7 @@
             <th>Env</th>
             <th>ClientId</th>
             <th>ClientSecret</th>
+            <th>Client/Secret Expiry</th>
             <th>str_token</th>
             <th>time_get</th>
             <th>Actions</th>
@@ -97,6 +102,7 @@
                 </td>
                 <td>@item.ClientId</td>
                 <td>@item.ClientSecret</td>
+                <td>@(item.ClientSecretExpiryDate?.ToString("yyyy-MM-dd") ?? "")</td>
                 <td>
                     <textarea class="form-control" name="str_token" style="min-height: 80px; max-height: 200px; overflow:auto; resize:vertical;" readonly>@item.str_token</textarea>
                 </td>
@@ -151,6 +157,10 @@
                                 <div class="mb-3">
                                     <label class="form-label">ClientSecret</label>
                                     <input class="form-control" name="ClientSecret" value="@item.ClientSecret" />
+                                </div>
+                                <div class="mb-3">
+                                    <label class="form-label">Client/Secret Expiry Date</label>
+                                    <input class="form-control" type="date" name="ClientSecretExpiryDate" value="@(item.ClientSecretExpiryDate?.ToString("yyyy-MM-dd") ?? "")" />
                                 </div>
                                 <div class="mb-3">
                                     <label class="form-label">str_token</label>
@@ -212,6 +222,10 @@
                     <div class="mb-3">
                         <label class="form-label">ClientSecret</label>
                         <input class="form-control" name="ClientSecret" />
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label">Client/Secret Expiry Date</label>
+                        <input class="form-control" type="date" name="ClientSecretExpiryDate" />
                     </div>
                     <div class="mb-3">
                         <label class="form-label">str_token</label>

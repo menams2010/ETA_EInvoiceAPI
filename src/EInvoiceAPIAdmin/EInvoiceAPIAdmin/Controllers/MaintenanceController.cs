@@ -20,11 +20,14 @@ public class MaintenanceController(AppDbContext ctx, LiteDatabase liteDb, IWebHo
 
     private static readonly string[] KnownTables = new[]
     {
-        "tb_eInvoiceEnv",
-        "tb_Settings",
-        "tb_Company",
-        "tb_CompEnv",
-        "tb_Login"
+        "EInvoiceEnvs",
+        "Settings",
+        "Companies",
+        "CompEnvs",
+        "Logins",
+        "AlertRules",
+        "SmtpProfiles",
+        "EmailTemplates"
     };
 
     private static HashSet<string>? ParseTables(string? tables)
@@ -91,14 +94,17 @@ public class MaintenanceController(AppDbContext ctx, LiteDatabase liteDb, IWebHo
             var processed = new List<string>();
             using var src = new LiteDatabase($"Filename={tmpPath};Password=@Mina&29012017&Mariam@;Connection=shared;ReadOnly=true");
 
-            if (ShouldProcess("tb_eInvoiceEnv", selected)) { CopyCollection(src, _liteDb, "tb_eInvoiceEnv"); processed.Add("tb_eInvoiceEnv"); }
-            if (ShouldProcess("tb_Settings", selected)) { CopyCollection(src, _liteDb, "tb_Settings"); processed.Add("tb_Settings"); }
-            if (ShouldProcess("tb_Company", selected)) { CopyCollection(src, _liteDb, "tb_Company"); processed.Add("tb_Company"); }
-            if (ShouldProcess("tb_CompEnv", selected)) { CopyCollection(src, _liteDb, "tb_CompEnv"); processed.Add("tb_CompEnv"); }
-            if (ShouldProcess("tb_Login", selected)) { CopyCollection(src, _liteDb, "tb_Login"); processed.Add("tb_Login"); }
+            if (ShouldProcess("EInvoiceEnvs", selected)) { CopyCollection(src, _liteDb, "EInvoiceEnvs"); processed.Add("EInvoiceEnvs"); }
+            if (ShouldProcess("Settings", selected)) { CopyCollection(src, _liteDb, "Settings"); processed.Add("Settings"); }
+            if (ShouldProcess("Companies", selected)) { CopyCollection(src, _liteDb, "Companies"); processed.Add("Companies"); }
+            if (ShouldProcess("CompEnvs", selected)) { CopyCollection(src, _liteDb, "CompEnvs"); processed.Add("CompEnvs"); }
+            if (ShouldProcess("Logins", selected)) { CopyCollection(src, _liteDb, "Logins"); processed.Add("Logins"); }
+            if (ShouldProcess("AlertRules", selected)) { CopyCollection(src, _liteDb, "AlertRules"); processed.Add("AlertRules"); }
+            if (ShouldProcess("SmtpProfiles", selected)) { CopyCollection(src, _liteDb, "SmtpProfiles"); processed.Add("SmtpProfiles"); }
+            if (ShouldProcess("EmailTemplates", selected)) { CopyCollection(src, _liteDb, "EmailTemplates"); processed.Add("EmailTemplates"); }
 
             // Normalize after restore only if companies were included or all tables
-            if (ShouldProcess("tb_Company", selected))
+            if (ShouldProcess("Companies", selected))
             {
                 NormalizeCompaniesUseXmlToJson();
             }
