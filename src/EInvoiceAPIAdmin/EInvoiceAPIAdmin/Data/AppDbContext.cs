@@ -21,6 +21,7 @@ namespace InvoiceWebApp.Data
         public ILiteCollection<SmtpProfile> SmtpProfiles => _db.GetCollection<SmtpProfile>("SmtpProfiles");
         public ILiteCollection<EmailTemplate> EmailTemplates => _db.GetCollection<EmailTemplate>("EmailTemplates");
         public ILiteCollection<AlertSendLog> AlertSendLogs => _db.GetCollection<AlertSendLog>("AlertSendLogs");
+        public ILiteCollection<AuditLog> AuditLogs => _db.GetCollection<AuditLog>("AuditLogs");
 
         public AppDbContext(string databasePath)
         {

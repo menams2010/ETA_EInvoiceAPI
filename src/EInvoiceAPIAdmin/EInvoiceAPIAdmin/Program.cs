@@ -22,6 +22,7 @@ builder.Services.AddScoped<AppDbContext>(sp =>
 
 builder.Services.AddSingleton<SmtpEmailSender>();
 builder.Services.AddScoped<AlertRunner>();
+builder.Services.AddScoped<AuditLogService>();
 builder.Services.AddHostedService<AlertBackgroundService>();
 
 // Enable session

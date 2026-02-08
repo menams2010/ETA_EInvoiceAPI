@@ -109,6 +109,7 @@
                 <td>@item.time_get</td>
                 <td>
                     <button class="btn btn-warning btn-sm" data-bs-toggle="modal" data-bs-target="#editModal-@item.Id">Edit</button>
+                    <button class="btn btn-info btn-sm" data-bs-toggle="modal" data-bs-target="#cloneModal-@item.Id">Clone</button>
                     <form asp-action="Delete" method="post" class="d-inline">
                         <input type="hidden" name="id" value="@item.Id" />
                         <button type="submit" class="btn btn-danger btn-sm" onclick="return confirm('Are you sure you want to delete this CompEnv?')">Delete</button>
@@ -173,6 +174,47 @@
                             </div>
                             <div class="modal-footer">
                                 <button type="submit" class="btn btn-warning">Save</button>
+                                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
+                            </div>
+                        </form>
+                    </div>
+                </div>
+            </div>
+            <!-- Clone Modal for this row -->
+            <div class="modal fade" id="cloneModal-@item.Id" tabindex="-1" aria-labelledby="cloneModalLabel-@item.Id" aria-hidden="true">
+                <div class="modal-dialog modal-dialog-centered">
+                    <div class="modal-content">
+                        <form asp-action="Clone" method="post">
+                            <div class="modal-header">
+                                <h5 class="modal-title" id="cloneModalLabel-@item.Id">Clone CompEnv to Another Company</h5>
+                                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+                            </div>
+                            <div class="modal-body">
+                                <input type="hidden" name="id" value="@item.Id" />
+                                <div class="alert alert-info">
+                                    <strong>Source:</strong> @(company != null ? $"{company.CompanyCode} - {company.CompanyName}" : item.CompanyId.ToString()) / @(env?.EnvName ?? item.EnvId.ToString())
+                                </div>
+                                <div class="mb-3">
+                                    <label class="form-label">Target Company</label>
+                                    <select class="form-select" name="targetCompanyId" required>
+                                        <option value="">-- Select Target Company --</option>
+                                        @foreach (var comp in companies ?? new List<InvoiceWebApp.Models.Company>())
+                                        {
+                                            @if (comp.Id != item.CompanyId)
+                                            {
+                                                <option value="@comp.Id">
+                                                    @comp.CompanyCode - @comp.CompanyName
+                                                </option>
+                                            }
+                                        }
+                                    </select>
+                                </div>
+                                <div class="form-text">
+                                    This will copy ClientId, ClientSecret, and Expiry Date to the selected company for the same environment.
+                                </div>
+                            </div>
+                            <div class="modal-footer">
+                                <button type="submit" class="btn btn-info">Clone</button>
                                 <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
                             </div>
                         </form>

@@ -166,6 +166,11 @@ body {
                         </a>
                     </li>
                     <li class="nav-item">
+                        <a class="nav-link @((currentController == "auditlog" && currentAction == "index") ? "active" : "")" asp-controller="AuditLog" asp-action="Index">
+                            <i class="bi bi-journal-text"></i> <span>Audit Log</span>
+                        </a>
+                    </li>
+                    <li class="nav-item">
                         <a class="nav-link @((currentController == "maintenance" && currentAction == "index") ? "active" : "")" asp-controller="Maintenance" asp-action="Index">
                             <i class="bi bi-hdd-network"></i> <span>Maintenance</span>
                         </a>

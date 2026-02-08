@@ -1,0 +1,131 @@
+@model List<InvoiceWebApp.Models.AuditLog>
+@{
+    ViewData["Title"] = "Audit Log";
+}
+
+<h3>Audit Log</h3>
+
+<div class="card mb-3">
+    <div class="card-body">
+        <form method="get" class="row g-2 align-items-end">
+            <div class="col-auto">
+                <label class="form-label">Entity Type</label>
+                <select name="entityType" class="form-select form-select-sm">
+                    <option value="">All</option>
+                    <option value="CompEnv" selected="@(ViewBag.EntityTypeFilter == "CompEnv")">CompEnv</option>
+                    <option value="Company" selected="@(ViewBag.EntityTypeFilter == "Company")">Company</option>
+                    <option value="SmtpProfile" selected="@(ViewBag.EntityTypeFilter == "SmtpProfile")">SmtpProfile</option>
+                    <option value="EmailTemplate" selected="@(ViewBag.EntityTypeFilter == "EmailTemplate")">EmailTemplate</option>
+                    <option value="AlertRule" selected="@(ViewBag.EntityTypeFilter == "AlertRule")">AlertRule</option>
+                </select>
+            </div>
+            <div class="col-auto">
+                <label class="form-label">User Name</label>
+                <input type="text" name="userName" class="form-control form-control-sm" value="@ViewBag.UserNameFilter" placeholder="Filter by user" />
+            </div>
+            <div class="col-auto">
+                <label class="form-label">Limit</label>
+                <select name="limit" class="form-select form-select-sm">
+                    <option value="50" selected="@(ViewBag.Limit == 50)">50</option>
+                    <option value="100" selected="@(ViewBag.Limit == 100)">100</option>
+                    <option value="500" selected="@(ViewBag.Limit == 500)">500</option>
+                </select>
+            </div>
+            <div class="col-auto">
+                <button type="submit" class="btn btn-sm btn-primary">Filter</button>
+            </div>
+        </form>
+    </div>
+</div>
+
+<div class="table-responsive">
+    <table class="table table-striped table-sm">
+        <thead>
+            <tr>
+                <th>Timestamp (UTC)</th>
+                <th>User</th>
+                <th>Action</th>
+                <th>Entity</th>
+                <th>ID</th>
+                <th>Description</th>
+                <th>IP</th>
+                <th>Details</th>
+            </tr>
+        </thead>
+        <tbody>
+            @if (Model.Count == 0)
+            {
+                <tr>
+                    <td colspan="8" class="text-center text-muted">No audit logs found.</td>
+                </tr>
+            }
+            @foreach (var log in Model)
+            {
+                <tr>
+                    <td class="text-nowrap">@log.TimestampUtc.ToString("yyyy-MM-dd HH:mm:ss")</td>
+                    <td>@log.UserName</td>
+                    <td>
+                        @if (log.Action == "Create")
+                        {
+                            <span class="badge bg-success">@log.Action</span>
+                        }
+                        else if (log.Action == "Update")
+                        {
+                            <span class="badge bg-warning text-dark">@log.Action</span>
+                        }
+                        else if (log.Action == "Delete")
+                        {
+                            <span class="badge bg-danger">@log.Action</span>
+                        }
+                        else
+                        {
+                            <span class="badge bg-secondary">@log.Action</span>
+                        }
+                    </td>
+                    <td>@log.EntityType</td>
+                    <td>@log.EntityId</td>
+                    <td>@log.Description</td>
+                    <td>@log.IpAddress</td>
+                    <td>
+                        @if (!string.IsNullOrEmpty(log.OldValues) || !string.IsNullOrEmpty(log.NewValues))
+                        {
+                            <button type="button" class="btn btn-sm btn-outline-info" data-bs-toggle="modal" data-bs-target="#detailsModal-@log.Id">
+                                <i class="bi bi-eye"></i>
+                            </button>
+                        }
+                    </td>
+                </tr>
+            }
+        </tbody>
+    </table>
+</div>
+
+<!-- Detail Modals -->
+@foreach (var log in Model.Where(l => !string.IsNullOrEmpty(l.OldValues) || !string.IsNullOrEmpty(l.NewValues)))
+{
+    <div class="modal fade" id="detailsModal-@log.Id" tabindex="-1">
+        <div class="modal-dialog modal-lg">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h5 class="modal-title">Audit Details - @log.Action @log.EntityType #@log.EntityId</h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+                </div>
+                <div class="modal-body">
+                    @if (!string.IsNullOrEmpty(log.OldValues))
+                    {
+                        <h6>Old Values:</h6>
+                        <pre class="bg-light p-2 rounded" style="max-height: 200px; overflow: auto;">@log.OldValues</pre>
+                    }
+                    @if (!string.IsNullOrEmpty(log.NewValues))
+                    {
+                        <h6>New Values:</h6>
+                        <pre class="bg-light p-2 rounded" style="max-height: 200px; overflow: auto;">@log.NewValues</pre>
+                    }
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Close</button>
+                </div>
+            </div>
+        </div>
+    </div>
+}

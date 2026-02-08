@@ -1,5 +1,6 @@
 ﻿using InvoiceWebApp.Data;
 using InvoiceWebApp.Models;
+using InvoiceWebApp.Services;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using System.Text.Json;
@@ -10,7 +11,13 @@ namespace InvoiceWebApp.Controllers
     public class CompEnvController : Controller
     {
         private readonly AppDbContext _context;
-        public CompEnvController(AppDbContext context) { _context = context; }
+        private readonly AuditLogService _audit;
+
+        public CompEnvController(AppDbContext context, AuditLogService audit)
+        {
+            _context = context;
+            _audit = audit;
+        }
 
         public IActionResult Index()
         {
@@ -25,6 +32,15 @@ namespace InvoiceWebApp.Controllers
             if (ModelState.IsValid)
             {
                 _context.CompEnvs.Upsert(compEnv);
+                _audit.Log(
+                    User.Identity?.Name ?? "Unknown",
+                    "Create",
+                    "CompEnv",
+                    compEnv.Id.ToString(),
+                    $"Created CompEnv for Company {compEnv.CompanyId}, Env {compEnv.EnvId}",
+                    null,
+                    compEnv,
+                    HttpContext.Connection.RemoteIpAddress?.ToString());
             }
             return RedirectToAction("Index");
         }
@@ -34,7 +50,17 @@ namespace InvoiceWebApp.Controllers
         {
             if (ModelState.IsValid)
             {
+                var oldValue = _context.CompEnvs.FindById(compEnv.Id);
                 _context.CompEnvs.Update(compEnv);
+                _audit.Log(
+                    User.Identity?.Name ?? "Unknown",
+                    "Update",
+                    "CompEnv",
+                    compEnv.Id.ToString(),
+                    $"Updated CompEnv for Company {compEnv.CompanyId}, Env {compEnv.EnvId}",
+                    oldValue,
+                    compEnv,
+                    HttpContext.Connection.RemoteIpAddress?.ToString());
             }
             return RedirectToAction("Index");
         }
@@ -42,7 +68,17 @@ namespace InvoiceWebApp.Controllers
         [HttpPost]
         public IActionResult Delete(int id)
         {
+            var oldValue = _context.CompEnvs.FindById(id);
             _context.CompEnvs.Delete(id);
+            _audit.Log(
+                User.Identity?.Name ?? "Unknown",
+                "Delete",
+                "CompEnv",
+                id.ToString(),
+                $"Deleted CompEnv {id}",
+                oldValue,
+                null,
+                HttpContext.Connection.RemoteIpAddress?.ToString());
             return RedirectToAction("Index");
         }
 
@@ -92,6 +128,43 @@ namespace InvoiceWebApp.Controllers
                     ModelState.AddModelError("", "Invalid JSON structure.");
                 }
             }
+            return RedirectToAction("Index");
+        }
+
+        [HttpPost]
+        public IActionResult Clone(int id, long targetCompanyId)
+        {
+            var source = _context.CompEnvs.FindById(id);
+            if (source is null)
+                return RedirectToAction("Index");
+
+            // Get next ID
+            var nextId = _context.CompEnvs.Query().OrderByDescending(x => x.Id).Limit(1).ToList().FirstOrDefault()?.Id + 1 ?? 1;
+
+            var clone = new CompEnv
+            {
+                Id = nextId,
+                CompanyId = targetCompanyId,
+                EnvId = source.EnvId,
+                ClientId = source.ClientId,
+                ClientSecret = source.ClientSecret,
+                ClientSecretExpiryDate = source.ClientSecretExpiryDate,
+                str_token = null,
+                time_get = null
+            };
+
+            _context.CompEnvs.Insert(clone);
+
+            _audit.Log(
+                User.Identity?.Name ?? "Unknown",
+                "Clone",
+                "CompEnv",
+                clone.Id.ToString(),
+                $"Cloned CompEnv {id} to Company {targetCompanyId}",
+                source,
+                clone,
+                HttpContext.Connection.RemoteIpAddress?.ToString());
+
             return RedirectToAction("Index");
         }
     }

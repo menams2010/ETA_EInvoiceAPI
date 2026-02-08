@@ -58,13 +58,18 @@ public class AlertRunner(AppDbContext ctx, SmtpEmailSender sender)
                     : compEnv.EnvId.ToString();
 
                 var entity = $"{companyName} / {envName}";
+                var severity = days <= 0 ? "Critical" : days <= 7 ? "Warning" : "Info";
 
                 var values = new Dictionary<string, string?>
                 {
                     ["Type"] = "Client/Secret",
                     ["Days"] = days.ToString(),
                     ["ExpirationDate"] = expiry.ToString("yyyy-MM-dd"),
-                    ["Entity"] = entity
+                    ["Entity"] = entity,
+                    ["CompanyName"] = companyName,
+                    ["Environment"] = envName,
+                    ["RuleName"] = rule.Name,
+                    ["Severity"] = severity
                 };
 
                 var subject = AlertTemplateRenderer.Render(template.Subject, values);
@@ -103,12 +108,17 @@ public class AlertRunner(AppDbContext ctx, SmtpEmailSender sender)
                 template ??= templates.Values.FirstOrDefault();
                 if (template is null) continue;
 
+                var certSeverity = days <= 0 ? "Critical" : days <= 7 ? "Warning" : "Info";
                 var values = new Dictionary<string, string?>
                 {
                     ["Type"] = "Certificate",
                     ["Days"] = days.ToString(),
                     ["ExpirationDate"] = certHit.ExpiryDateUtc.ToString("yyyy-MM-dd"),
-                    ["Entity"] = certHit.DisplayName
+                    ["Entity"] = certHit.DisplayName,
+                    ["CompanyName"] = string.Empty,
+                    ["Environment"] = string.Empty,
+                    ["RuleName"] = rule.Name,
+                    ["Severity"] = certSeverity
                 };
 
                 var subject = AlertTemplateRenderer.Render(template.Subject, values);

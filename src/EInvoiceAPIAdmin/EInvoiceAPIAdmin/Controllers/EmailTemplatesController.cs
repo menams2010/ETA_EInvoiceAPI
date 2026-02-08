@@ -1,5 +1,6 @@
 using InvoiceWebApp.Data;
 using InvoiceWebApp.Models;
+using InvoiceWebApp.Services;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 
@@ -72,5 +73,37 @@ public class EmailTemplatesController(AppDbContext ctx) : Controller
 
         _ctx.EmailTemplates.Delete(id);
         return RedirectToAction(nameof(Index), new { message = "Template deleted." });
+    }
+
+    [HttpPost]
+    [ValidateAntiForgeryToken]
+    public IActionResult Preview([FromBody] PreviewRequest request)
+    {
+        if (string.IsNullOrEmpty(request.Subject) && string.IsNullOrEmpty(request.Body))
+            return BadRequest(new { error = "Subject and Body are required." });
+
+        var sampleValues = new Dictionary<string, string?>
+        {
+            ["Type"] = "Client/Secret",
+            ["Days"] = "7",
+            ["ExpirationDate"] = DateTime.UtcNow.AddDays(7).ToString("yyyy-MM-dd"),
+            ["Entity"] = "Sample Company / Production",
+            ["CompanyName"] = "Sample Company",
+            ["Environment"] = "Production",
+            ["RuleName"] = "7 Days Before Expiry",
+            ["Severity"] = "Warning"
+        };
+
+        var renderedSubject = AlertTemplateRenderer.Render(request.Subject ?? "", sampleValues);
+        var renderedBody = AlertTemplateRenderer.Render(request.Body ?? "", sampleValues);
+
+        return Json(new { subject = renderedSubject, body = renderedBody, isHtml = request.IsHtml });
+    }
+
+    public class PreviewRequest
+    {
+        public string? Subject { get; set; }
+        public string? Body { get; set; }
+        public bool IsHtml { get; set; }
     }
 }

@@ -1,0 +1,60 @@
+@{
+    var placeholders = new (string Token, string Description)[]
+    {
+        ("{Type}", "Alert type (e.g., Certificate, Client/Secret)"),
+        ("{Days}", "Days before expiration (integer)"),
+        ("{ExpirationDate}", "Expiration date (yyyy-MM-dd)"),
+        ("{Entity}", "Entity name (Company/Env or Certificate)"),
+        ("{CompanyName}", "Company name"),
+        ("{Environment}", "Environment name"),
+        ("{RuleName}", "Alert rule name"),
+        ("{Severity}", "Alert severity (Critical, Warning, Info)"),
+    };
+}
+
+<div class="card mt-2" id="placeholderPaletteCard">
+    <div class="card-header">Placeholders</div>
+    <div class="card-body">
+        <div class="small text-muted mb-2">Click a token to copy it.</div>
+        <div class="d-flex flex-wrap gap-2">
+            @foreach (var p in placeholders)
+            {
+                <button type="button" class="btn btn-sm btn-outline-secondary placeholder-token" data-token="@p.Token">@p.Token</button>
+            }
+        </div>
+        <ul class="mt-3 mb-0 small">
+            @foreach (var p in placeholders)
+            {
+                <li><strong>@p.Token</strong> - @p.Description</li>
+            }
+        </ul>
+    </div>
+</div>
+
+<script>
+    (function () {
+        function copyText(text) {
+            if (navigator && navigator.clipboard && navigator.clipboard.writeText) {
+                navigator.clipboard.writeText(text);
+                return;
+            }
+            var ta = document.createElement('textarea');
+            ta.value = text;
+            ta.style.position = 'fixed';
+            ta.style.left = '-1000px';
+            document.body.appendChild(ta);
+            ta.focus();
+            ta.select();
+            try { document.execCommand('copy'); } catch (e) { }
+            document.body.removeChild(ta);
+        }
+
+        document.addEventListener('click', function (e) {
+            var btn = e.target && e.target.closest ? e.target.closest('.placeholder-token') : null;
+            if (!btn) return;
+            var token = btn.getAttribute('data-token');
+            if (!token) return;
+            copyText(token);
+        });
+    })();
+</script>
