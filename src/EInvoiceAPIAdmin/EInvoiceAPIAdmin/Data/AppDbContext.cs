@@ -116,6 +116,13 @@ namespace InvoiceWebApp.Data
             AlertSendLogs.EnsureIndex(x => x.EntityKey);
             AlertSendLogs.EnsureIndex(x => x.SentDate);
 
+            AuditLogs.EnsureIndex(x => x.Id, true);
+            AuditLogs.EnsureIndex(x => x.TimestampUtc);
+            AuditLogs.EnsureIndex(x => x.Action);
+
+            // Index for client/secret expiration date alerts
+            CompEnvs.EnsureIndex(x => x.ClientSecretExpiryDate);
+
             MigrateLegacyAlertsConfigFromSettings();
 
             if (Logins.Count() == 0)
@@ -129,7 +136,7 @@ namespace InvoiceWebApp.Data
             }
             if (Settings.Count() == 0)
             {
-                Settings.Insert(new Settings { Id = 1, SettingName = "DBVersion", SettingValue = "2026-01-21 00:00:00" });
+                Settings.Insert(new Settings { Id = 1, SettingName = "DBVersion", SettingValue = "2026-02-08 00:00:00" });
                 Settings.Insert(new Settings { Id = 2, SettingName = "UseImpersonation", SettingValue = "false" });
                 Settings.Insert(new Settings { Id = 3, SettingName = "ImpDomain", SettingValue = null });
                 Settings.Insert(new Settings { Id = 4, SettingName = "ImpUsername", SettingValue = null });
