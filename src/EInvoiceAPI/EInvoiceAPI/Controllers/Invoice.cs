@@ -26,6 +26,7 @@ using System.Security.Cryptography.Pkcs;
 using System.Security.Cryptography.X509Certificates;
 using System.Security.Principal;
 using System.Text;
+using System.Text.Json;
 using System.Text.RegularExpressions;
 using System.Xml;
 using System.Xml.Linq;
@@ -123,6 +124,12 @@ namespace EInvoiceAPI.Controllers
             JArray jarray = new JArray { jobject };
             invoice.Add("signatures", jarray);
             string signedInvoice = "{\"documents\":[" + invoice.ToString() + "]}";
+            using (JsonDocument document = JsonDocument.Parse(signedInvoice))
+            {
+                signedInvoice = System.Text.Json.JsonSerializer.Serialize(document.RootElement,new JsonSerializerOptions { WriteIndented = false,
+                    Encoder = System.Text.Encodings.Web.JavaScriptEncoder.UnsafeRelaxedJsonEscaping
+            }).ToString();
+            }
             ////////////////////////////////////////////////////////////
             // Log the API call to Slack
             //await _slackLogger.LogApiCallAsync(CompanyCode, Request, "SignInvoice");
@@ -132,7 +139,7 @@ namespace EInvoiceAPI.Controllers
             {
                 StatusCode = (int)HttpStatusCode.OK,
                 Content = signedInvoice,
-                ContentType = "application/json"
+                ContentType = "application/json; charset=utf-8",
             };
         }
 
@@ -185,10 +192,19 @@ namespace EInvoiceAPI.Controllers
             JArray jarray = new JArray { jobject };
             invoice.Add("signatures", jarray);
             string signedInvoice = "{\"documents\":[" + invoice.ToString() + "]}";
-        ////////////////////////////////////////////////////////////
-        // Log the API call to Slack
-        //_slackLogger.LogApiCallAsync(CompanyCode, Request, "SendInvoice").GetAwaiter().GetResult();
-        ////////////////////////////////////////////////////////////
+            using (JsonDocument document = JsonDocument.Parse(signedInvoice))
+            {
+                signedInvoice = System.Text.Json.JsonSerializer.Serialize(document.RootElement, new JsonSerializerOptions
+                {
+                    WriteIndented = false,
+                    Encoder = System.Text.Encodings.Web.JavaScriptEncoder.UnsafeRelaxedJsonEscaping
+                }).ToString();
+            }
+
+            ////////////////////////////////////////////////////////////
+            // Log the API call to Slack
+            //_slackLogger.LogApiCallAsync(CompanyCode, Request, "SendInvoice").GetAwaiter().GetResult();
+            ////////////////////////////////////////////////////////////
 
         GetToken:
             var token = TokenHelper.GetToken(CompanyCode, EnvironmentId, out var tokenSettings, sysUIFormat);
