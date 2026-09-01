@@ -104,14 +104,14 @@ namespace EInvoiceAPI.Controllers
                 }
             }
 
-            using (JsonDocument document = JsonDocument.Parse(requestBody))
-            {
-                requestBody = System.Text.Json.JsonSerializer.Serialize(document.RootElement, new JsonSerializerOptions
-                {
-                    WriteIndented = false,
-                    Encoder = System.Text.Encodings.Web.JavaScriptEncoder.UnsafeRelaxedJsonEscaping
-                }).ToString();
-            }
+            //using (JsonDocument document = JsonDocument.Parse(requestBody))
+            //{
+            //    requestBody = System.Text.Json.JsonSerializer.Serialize(document.RootElement, new JsonSerializerOptions
+            //    {
+            //        WriteIndented = false,
+            //        Encoder = System.Text.Encodings.Web.JavaScriptEncoder.UnsafeRelaxedJsonEscaping
+            //    }).ToString();
+            //}
 
             JObject? invoice = InvoiceHelper.DeserializeInvoice(requestBody);
             var serializedJson = _serializer.Serialize(invoice);
@@ -135,14 +135,14 @@ namespace EInvoiceAPI.Controllers
             invoice.Add("signatures", jarray);
             string signedInvoice = "{\"documents\":[" + invoice.ToString() + "]}";
 
-            using (JsonDocument document = JsonDocument.Parse(signedInvoice))
-            {
-                signedInvoice = System.Text.Json.JsonSerializer.Serialize(document.RootElement, new JsonSerializerOptions
-                {
-                    WriteIndented = false,
-                    Encoder = System.Text.Encodings.Web.JavaScriptEncoder.UnsafeRelaxedJsonEscaping
-                }).ToString();
-            }
+            //using (JsonDocument document = JsonDocument.Parse(signedInvoice))
+            //{
+            //    signedInvoice = System.Text.Json.JsonSerializer.Serialize(document.RootElement, new JsonSerializerOptions
+            //    {
+            //        WriteIndented = false,
+            //        Encoder = System.Text.Encodings.Web.JavaScriptEncoder.UnsafeRelaxedJsonEscaping
+            //    }).ToString();
+            //}
 
             ////////////////////////////////////////////////////////////
             // Log the API call to Slack
@@ -185,14 +185,14 @@ namespace EInvoiceAPI.Controllers
                 }
             }
 
-            using (JsonDocument document = JsonDocument.Parse(requestBody))
-            {
-                requestBody = System.Text.Json.JsonSerializer.Serialize(document.RootElement, new JsonSerializerOptions
-                {
-                    WriteIndented = false,
-                    Encoder = System.Text.Encodings.Web.JavaScriptEncoder.UnsafeRelaxedJsonEscaping
-                }).ToString();
-            }
+            //using (JsonDocument document = JsonDocument.Parse(requestBody))
+            //{
+            //    requestBody = System.Text.Json.JsonSerializer.Serialize(document.RootElement, new JsonSerializerOptions
+            //    {
+            //        WriteIndented = false,
+            //        Encoder = System.Text.Encodings.Web.JavaScriptEncoder.UnsafeRelaxedJsonEscaping
+            //    }).ToString();
+            //}
 
             JObject? invoice = InvoiceHelper.DeserializeInvoice(requestBody);
             var serializedJson = _serializer.Serialize(invoice);
@@ -216,14 +216,14 @@ namespace EInvoiceAPI.Controllers
             invoice.Add("signatures", jarray);
             string signedInvoice = "{\"documents\":[" + invoice.ToString() + "]}";
 
-            using (JsonDocument document = JsonDocument.Parse(signedInvoice))
-            {
-                signedInvoice = System.Text.Json.JsonSerializer.Serialize(document.RootElement, new JsonSerializerOptions
-                {
-                    WriteIndented = false,
-                    Encoder = System.Text.Encodings.Web.JavaScriptEncoder.UnsafeRelaxedJsonEscaping
-                }).ToString();
-            }
+            //using (JsonDocument document = JsonDocument.Parse(signedInvoice))
+            //{
+            //    signedInvoice = System.Text.Json.JsonSerializer.Serialize(document.RootElement, new JsonSerializerOptions
+            //    {
+            //        WriteIndented = false,
+            //        Encoder = System.Text.Encodings.Web.JavaScriptEncoder.UnsafeRelaxedJsonEscaping
+            //    }).ToString();
+            //}
             //signedInvoice = JsonConvert.SerializeObject(requestBody, new JsonSerializerSettings
             //{
             //    FloatFormatHandling = FloatFormatHandling.String,
@@ -1018,6 +1018,158 @@ namespace EInvoiceAPI.Controllers
         {
             var token = TokenHelper.GetToken(companyCode, environmentId, out TokenSettings? tokenSettings, sysUIFormat);
             return token ?? string.Empty;
+        }
+
+        [HttpPost("[action]")]
+        [Produces("application/json")]
+        public async Task<IActionResult> SearchDocuments([FromHeader] string CompanyCode, [FromHeader] string EnvironmentId, [FromBody] SearchDocumentsFilter filter)
+        {
+            if (filter == null)
+            {
+                return BadRequest("Filter parameters are required.");
+            }
+
+            // Validate that either submissionDate or issueDate filters are provided
+            if ((!filter.SubmissionDateFrom.HasValue && !filter.SubmissionDateTo.HasValue) &&
+                (!filter.IssueDateFrom.HasValue && !filter.IssueDateTo.HasValue) &&
+                string.IsNullOrEmpty(filter.Uuid) && string.IsNullOrEmpty(filter.InternalID))
+            {
+                return BadRequest("Either submissionDate filters, issueDate filters, uuid, or internalID must be provided.");
+            }
+
+        GetToken:
+            var token = TokenHelper.GetToken(CompanyCode, EnvironmentId, out var tokenSettings, sysUIFormat);
+            if (token.StartsWith("CANNOT"))
+            {
+                return Unauthorized("Cannot Get Token \r\n" + token);
+            }
+
+            IdentityBaseURL = tokenSettings?.EnvTokenUrl;
+            SystemAPIBaseURL = tokenSettings?.EnvInvoicingUrl;
+
+            // Build query string from filter parameters
+            var queryParams = new List<string>();
+
+            if (filter.SubmissionDateFrom.HasValue)
+            {
+                queryParams.Add($"submissionDateFrom={Uri.EscapeDataString(filter.SubmissionDateFrom.Value.ToString("yyyy-MM-ddTHH:mm:ss"))}");
+            }
+
+            if (filter.SubmissionDateTo.HasValue)
+            {
+                queryParams.Add($"submissionDateTo={Uri.EscapeDataString(filter.SubmissionDateTo.Value.ToString("yyyy-MM-ddTHH:mm:ss"))}");
+            }
+
+            if (filter.IssueDateFrom.HasValue)
+            {
+                queryParams.Add($"issueDateFrom={Uri.EscapeDataString(filter.IssueDateFrom.Value.ToString("yyyy-MM-ddTHH:mm:ss"))}");
+            }
+
+            if (filter.IssueDateTo.HasValue)
+            {
+                queryParams.Add($"issueDateTo={Uri.EscapeDataString(filter.IssueDateTo.Value.ToString("yyyy-MM-ddTHH:mm:ss"))}");
+            }
+
+            if (!string.IsNullOrEmpty(filter.ContinuationToken))
+            {
+                queryParams.Add($"continuationToken={Uri.EscapeDataString(filter.ContinuationToken)}");
+            }
+
+            if (filter.PageSize.HasValue)
+            {
+                queryParams.Add($"pageSize={filter.PageSize}");
+            }
+
+            if (!string.IsNullOrEmpty(filter.Uuid))
+            {
+                queryParams.Add($"uuid={Uri.EscapeDataString(filter.Uuid)}");
+            }
+
+            if (!string.IsNullOrEmpty(filter.InternalID))
+            {
+                queryParams.Add($"internalID={Uri.EscapeDataString(filter.InternalID)}");
+            }
+
+            if (!string.IsNullOrEmpty(filter.Direction))
+            {
+                queryParams.Add($"direction={Uri.EscapeDataString(filter.Direction)}");
+            }
+
+            if (!string.IsNullOrEmpty(filter.Status))
+            {
+                queryParams.Add($"status={Uri.EscapeDataString(filter.Status)}");
+            }
+
+            if (!string.IsNullOrEmpty(filter.DocumentType))
+            {
+                queryParams.Add($"documentType={Uri.EscapeDataString(filter.DocumentType)}");
+            }
+
+            if (!string.IsNullOrEmpty(filter.ReceiverType))
+            {
+                queryParams.Add($"receiverType={Uri.EscapeDataString(filter.ReceiverType)}");
+            }
+
+            if (!string.IsNullOrEmpty(filter.ReceiverId))
+            {
+                queryParams.Add($"receiverId={Uri.EscapeDataString(filter.ReceiverId)}");
+            }
+
+            if (!string.IsNullOrEmpty(filter.SenderName))
+            {
+                queryParams.Add($"senderName={Uri.EscapeDataString(filter.SenderName)}");
+            }
+
+            if (!string.IsNullOrEmpty(filter.ReceiverName))
+            {
+                queryParams.Add($"receiverName={Uri.EscapeDataString(filter.ReceiverName)}");
+            }
+
+            string queryString = string.Join("&", queryParams);
+            string url = SystemAPIBaseURL + "documents/search";
+            if (!string.IsNullOrEmpty(queryString))
+            {
+                url += "?" + queryString;
+            }
+
+            var client = new RestClient(new RestClientOptions(url)
+            {
+                Timeout = TimeSpan.FromSeconds(40)
+            });
+
+            int maxRetries = 3;
+            int attempt = 0;
+            RestResponse? response = null;
+
+            while (attempt < maxRetries)
+            {
+                attempt++;
+                var request = new RestRequest(string.Empty, Method.Get);
+                request.AddHeader("Authorization", "Bearer " + token);
+
+                response = await client.ExecuteAsync(request);
+
+                if ((int)response.StatusCode == 0 || response.StatusCode == (HttpStatusCode)429)
+                {
+                    await Task.Delay(2000 * attempt);
+                    continue;
+                }
+
+                break;
+            }
+
+            if (response?.Content is null || (int)response.StatusCode == 0)
+            {
+                return StatusCode(500, "Error: Received status code 0 with an empty response body from the API.");
+            }
+
+            if (response.StatusCode == HttpStatusCode.Unauthorized)
+            {
+                goto GetToken;
+            }
+
+            var res = JsonConvert.DeserializeObject<ExpandoObject>(response.Content, InvoiceHelper.JsonSettings);
+            return StatusCode((int)response.StatusCode, res);
         }
     }
 }
