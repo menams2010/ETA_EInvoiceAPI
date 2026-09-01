@@ -15,6 +15,7 @@ using Org.BouncyCastle.Security;
 using Org.BouncyCastle.X509;
 using RestSharp;
 using System.Data;
+using System.Diagnostics;
 using System.Dynamic;
 using System.Globalization;
 using System.Net;
@@ -103,6 +104,15 @@ namespace EInvoiceAPI.Controllers
                 }
             }
 
+            using (JsonDocument document = JsonDocument.Parse(requestBody))
+            {
+                requestBody = System.Text.Json.JsonSerializer.Serialize(document.RootElement, new JsonSerializerOptions
+                {
+                    WriteIndented = false,
+                    Encoder = System.Text.Encodings.Web.JavaScriptEncoder.UnsafeRelaxedJsonEscaping
+                }).ToString();
+            }
+
             JObject? invoice = InvoiceHelper.DeserializeInvoice(requestBody);
             var serializedJson = _serializer.Serialize(invoice);
             string docVer = invoice["documentTypeVersion"]?.ToString() ?? string.Empty;
@@ -124,12 +134,16 @@ namespace EInvoiceAPI.Controllers
             JArray jarray = new JArray { jobject };
             invoice.Add("signatures", jarray);
             string signedInvoice = "{\"documents\":[" + invoice.ToString() + "]}";
+
             using (JsonDocument document = JsonDocument.Parse(signedInvoice))
             {
-                signedInvoice = System.Text.Json.JsonSerializer.Serialize(document.RootElement,new JsonSerializerOptions { WriteIndented = false,
+                signedInvoice = System.Text.Json.JsonSerializer.Serialize(document.RootElement, new JsonSerializerOptions
+                {
+                    WriteIndented = false,
                     Encoder = System.Text.Encodings.Web.JavaScriptEncoder.UnsafeRelaxedJsonEscaping
-            }).ToString();
+                }).ToString();
             }
+
             ////////////////////////////////////////////////////////////
             // Log the API call to Slack
             //await _slackLogger.LogApiCallAsync(CompanyCode, Request, "SignInvoice");
@@ -171,6 +185,15 @@ namespace EInvoiceAPI.Controllers
                 }
             }
 
+            using (JsonDocument document = JsonDocument.Parse(requestBody))
+            {
+                requestBody = System.Text.Json.JsonSerializer.Serialize(document.RootElement, new JsonSerializerOptions
+                {
+                    WriteIndented = false,
+                    Encoder = System.Text.Encodings.Web.JavaScriptEncoder.UnsafeRelaxedJsonEscaping
+                }).ToString();
+            }
+
             JObject? invoice = InvoiceHelper.DeserializeInvoice(requestBody);
             var serializedJson = _serializer.Serialize(invoice);
             string docVer = invoice["documentTypeVersion"]?.ToString() ?? string.Empty;
@@ -178,7 +201,7 @@ namespace EInvoiceAPI.Controllers
             string signValue = docVer.Equals("0.9")
                 ? "ANY"
                 : SignWithCms(Encoding.UTF8.GetBytes(serializedJson), UseIMP, CompanyCode);
-                //: SignWithCmsOld(Encoding.UTF8.GetBytes(serializedJson), UseIMP, CompanyCode);
+            //: SignWithCmsOld(Encoding.UTF8.GetBytes(serializedJson), UseIMP, CompanyCode);
             if (signValue.StartsWith("Error:"))
             {
                 return StatusCode(SignError, signValue);
@@ -192,6 +215,7 @@ namespace EInvoiceAPI.Controllers
             JArray jarray = new JArray { jobject };
             invoice.Add("signatures", jarray);
             string signedInvoice = "{\"documents\":[" + invoice.ToString() + "]}";
+
             using (JsonDocument document = JsonDocument.Parse(signedInvoice))
             {
                 signedInvoice = System.Text.Json.JsonSerializer.Serialize(document.RootElement, new JsonSerializerOptions
@@ -200,6 +224,15 @@ namespace EInvoiceAPI.Controllers
                     Encoder = System.Text.Encodings.Web.JavaScriptEncoder.UnsafeRelaxedJsonEscaping
                 }).ToString();
             }
+            //signedInvoice = JsonConvert.SerializeObject(requestBody, new JsonSerializerSettings
+            //{
+            //    FloatFormatHandling = FloatFormatHandling.String,
+            //    FloatParseHandling = FloatParseHandling.Decimal,
+            //    DateFormatHandling = DateFormatHandling.IsoDateFormat,
+            //    DateParseHandling = DateParseHandling.None,
+            //    Formatting = Newtonsoft.Json.Formatting.None
+            //});
+
 
             ////////////////////////////////////////////////////////////
             // Log the API call to Slack
@@ -289,8 +322,8 @@ namespace EInvoiceAPI.Controllers
         [HttpGet("[action]")]
         public async Task<ActionResult> GetSubmission([FromHeader] string CompanyCode, [FromHeader] string EnvironmentId, string submitionUUID)
         {
-        //companyCode = Request.Headers["CompanyCode"];
-        //environmentId = Request.Headers["EnvironmentId"];
+            //companyCode = Request.Headers["CompanyCode"];
+            //environmentId = Request.Headers["EnvironmentId"];
 
         GetToken:
             var token = TokenHelper.GetToken(CompanyCode, EnvironmentId, out var tokenSettings, sysUIFormat);
@@ -347,8 +380,8 @@ namespace EInvoiceAPI.Controllers
         [Produces("application/json")]
         public async Task<IActionResult> GetDocumentDetails([FromHeader] string CompanyCode, [FromHeader] string EnvironmentId, string documentUUID)
         {
-        //companyCode = Request.Headers["CompanyCode"].ToString();
-        //environmentId = Request.Headers["EnvironmentId"].ToString();
+            //companyCode = Request.Headers["CompanyCode"].ToString();
+            //environmentId = Request.Headers["EnvironmentId"].ToString();
 
         GetToken:
             var token = TokenHelper.GetToken(CompanyCode, EnvironmentId, out var tokenSettings, sysUIFormat);
@@ -401,8 +434,8 @@ namespace EInvoiceAPI.Controllers
         [HttpGet("[action]")]
         public async Task<ActionResult<string>> GetDocumentErrors([FromHeader] string CompanyCode, [FromHeader] string EnvironmentId, string documentUUID)
         {
-        //companyCode = Request.Headers["CompanyCode"].ToString();
-        //environmentId = Request.Headers["EnvironmentId"].ToString();
+            //companyCode = Request.Headers["CompanyCode"].ToString();
+            //environmentId = Request.Headers["EnvironmentId"].ToString();
 
         GetToken:
             var token = TokenHelper.GetToken(CompanyCode, EnvironmentId, out var tokenSettings, sysUIFormat);
@@ -475,8 +508,8 @@ namespace EInvoiceAPI.Controllers
         [HttpGet("[action]")]
         public async Task<ActionResult<string>> GetDocumentValid([FromHeader] string CompanyCode, [FromHeader] string EnvironmentId, string invoiceDocumentNo, [Optional] string? issueDateTime)
         {
-        //companyCode = Request.Headers["CompanyCode"].ToString();
-        //environmentId = Request.Headers["EnvironmentId"].ToString();
+            //companyCode = Request.Headers["CompanyCode"].ToString();
+            //environmentId = Request.Headers["EnvironmentId"].ToString();
 
         GetToken:
             var token = TokenHelper.GetToken(CompanyCode, EnvironmentId, out var tokenSettings, sysUIFormat);
