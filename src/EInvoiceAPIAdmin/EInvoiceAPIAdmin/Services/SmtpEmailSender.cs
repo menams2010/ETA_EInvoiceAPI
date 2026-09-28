@@ -8,6 +8,10 @@ public class SmtpEmailSender
 {
     public async Task SendAsync(SmtpProfile profile, IEnumerable<string> to, IEnumerable<string> cc, string subject, string body, bool isHtml, CancellationToken ct)
     {
+        var encryptionError = profile.GetEncryptionValidationError();
+        if (encryptionError is not null)
+            throw new NotSupportedException(encryptionError);
+
         using var msg = new MailMessage();
 
         foreach (var addr in to.Where(x => !string.IsNullOrWhiteSpace(x)))
@@ -27,7 +31,7 @@ public class SmtpEmailSender
 
         using var client = new SmtpClient(profile.Host, profile.Port)
         {
-            EnableSsl = profile.EnableSsl,
+            EnableSsl = profile.GetEffectiveEncryptionMethod() == SmtpProfile.EncryptionStartTls,
         };
 
         if (!string.IsNullOrWhiteSpace(profile.Username))

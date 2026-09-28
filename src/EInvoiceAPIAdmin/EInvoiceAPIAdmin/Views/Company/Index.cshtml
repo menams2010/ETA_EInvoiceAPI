@@ -500,20 +500,20 @@
                         }
                         data.certificates.forEach(cert => {
                             const tr = document.createElement('tr');
-                            tr.innerHTML = `
-                                <td>
-                                    <button type="button" class="btn btn-primary btn-sm" onclick="selectCertificate('${cert.serialNumber}')">Select</button>
-                                </td>
-                                <td>${cert.serialNumber || ''}</td>
-                                <td>${cert.subjectName || ''}</td>
-                                <td>${cert.subject || ''}</td>
-                                <td>${cert.issuerName || ''}</td>
-                                <td>${cert.issuer || ''}</td>
-                                <td>${cert.notBefore ? cert.notBefore.split('T')[0] : ''}</td>
-                                <td>${cert.notAfter ? cert.notAfter.split('T')[0] : ''}</td>
-                                <td>${cert.version || ''}</td>
-                                <td>${cert.friendlyName || ''}</td>
-                            `;
+                            const button = document.createElement('button');
+                            button.type = 'button';
+                            button.className = 'btn btn-primary btn-sm';
+                            button.textContent = 'Select';
+                            button.addEventListener('click', () => selectCertificate(cert.serialNumber));
+                            const action = document.createElement('td');
+                            action.appendChild(button);
+                            tr.appendChild(action);
+                            [cert.serialNumber, cert.subjectName, cert.subject, cert.issuerName, cert.issuer,
+                                cert.notBefore?.split('T')[0], cert.notAfter?.split('T')[0], cert.version, cert.friendlyName].forEach(value => {
+                                const cell = document.createElement('td');
+                                cell.textContent = value ?? '';
+                                tr.appendChild(cell);
+                            });
                             tbody.appendChild(tr);
                         });
                     })
@@ -555,14 +555,19 @@
                         }
                         data.tokens.forEach(token => {
                             const tr = document.createElement('tr');
-                            tr.innerHTML = `
-                                <td>
-                                    <button type="button" class="btn btn-primary btn-sm" onclick="selectTokenSerial('${token.SerialNumber}')">Select</button>
-                                </td>
-                                <td>${token.slotId || ''}</td>
-                                <td>${token.slotLabel || ''}</td>
-                                <td>${token.SerialNumber || ''}</td>
-                            `;
+                            const button = document.createElement('button');
+                            button.type = 'button';
+                            button.className = 'btn btn-primary btn-sm';
+                            button.textContent = 'Select';
+                            button.addEventListener('click', () => selectTokenSerial(token.SerialNumber));
+                            const action = document.createElement('td');
+                            action.appendChild(button);
+                            tr.appendChild(action);
+                            [token.slotId, token.slotLabel, token.SerialNumber].forEach(value => {
+                                const cell = document.createElement('td');
+                                cell.textContent = value ?? '';
+                                tr.appendChild(cell);
+                            });
                             tbody.appendChild(tr);
                         });
                     })

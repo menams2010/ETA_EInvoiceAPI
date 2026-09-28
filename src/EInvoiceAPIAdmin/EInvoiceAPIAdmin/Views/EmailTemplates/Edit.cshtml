@@ -205,7 +205,13 @@
                 const data = await response.json();
                 document.getElementById('previewSubject').textContent = data.subject;
                 if (data.isHtml) {
-                    document.getElementById('previewBody').innerHTML = data.body;
+                    const preview = document.createElement('iframe');
+                    preview.setAttribute('sandbox', '');
+                    preview.title = 'Email preview';
+                    preview.className = 'w-100 border-0';
+                    preview.style.minHeight = '300px';
+                    preview.srcdoc = '<meta http-equiv="Content-Security-Policy" content="default-src \'none\'; style-src \'unsafe-inline\'; img-src data:; form-action \'none\'">' + data.body;
+                    document.getElementById('previewBody').replaceChildren(preview);
                 } else {
                     document.getElementById('previewBody').textContent = data.body;
                 }

@@ -22,17 +22,22 @@
                 <i class="bi bi-upload"></i> Restore Database
             </div>
             <div class="card-body">
-                <p>Restore from a LiteDB backup file. This will replace the current data.</p>
+                <p>Restore selected current-schema collections from a LiteDB backup. This replaces the selected current data; it is not a legacy schema migration or a full-file restore.</p>
                 <form id="restoreForm" asp-controller="Maintenance" asp-action="Restore" method="post" enctype="multipart/form-data">
                     @Html.AntiForgeryToken()
                     <div class="mb-3">
                         <input type="file" class="form-control" name="backupFile" accept=".db" required />
                     </div>
                     <div class="mb-3">
+                        <label class="form-label">Backup password (only if different from the current database key)</label>
+                        <input type="password" class="form-control" name="backupPassword" autocomplete="off" />
+                        <div class="form-text">Restoring accounts invalidates their existing sessions.</div>
+                    </div>
+                    <div class="mb-3">
                         <label class="form-label">Tables to restore</label>
                         <div class="form-check">
                             <input class="form-check-input table-select-all" type="checkbox" id="restoreSelectAll" checked>
-                            <label class="form-check-label" for="restoreSelectAll">All tables</label>
+                            <label class="form-check-label" for="restoreSelectAll">All listed tables</label>
                         </div>
                         <div class="row row-cols-1 row-cols-sm-2 g-2 ms-2 mt-1">
                             <div class="col">
@@ -85,7 +90,7 @@
                             </div>
                         </div>
                         <input type="hidden" name="tables" id="restoreTables" />
-                        <div class="form-text">Leave "All tables" checked to restore everything, or uncheck it and select specific tables.</div>
+                        <div class="form-text">Only the listed tables are restored. Graph credentials and audit/send logs are not included in this operation. Use the offline procedure for legacy databases.</div>
                     </div>
                     <button type="submit" class="btn btn-danger"><i class="bi bi-cloud-upload"></i> Restore</button>
                 </form>
@@ -95,58 +100,18 @@
     <div class="col-12">
         <div class="card border-success">
             <div class="card-header bg-success text-white">
-                <i class="bi bi-filetype-sql"></i> Import From SQLite
+                <i class="bi bi-filetype-sql"></i> Migrate SQLite or Legacy LiteDB
             </div>
             <div class="card-body">
-                <p>Import data from an existing SQLite database file. Supported tables: tb_eInvoiceEnv, tb_Settings, tb_Company, tb_CompEnv, tb_Login.</p>
-                <form id="importForm" asp-controller="Maintenance" asp-action="ImportFromSqlite" method="post" enctype="multipart/form-data">
-                    @Html.AntiForgeryToken()
-                    <div class="mb-3">
-                        <input type="file" class="form-control" name="sqliteFile" accept=".db,.sqlite,.sqlite3" required />
-                    </div>
-                    <div class="mb-3">
-                        <label class="form-label">Tables to import</label>
-                        <div class="form-check">
-                            <input class="form-check-input table-select-all" type="checkbox" id="importSelectAll" checked>
-                            <label class="form-check-label" for="importSelectAll">All tables</label>
-                        </div>
-                        <div class="row row-cols-1 row-cols-sm-2 g-2 ms-2 mt-1">
-                            <div class="col">
-                                <div class="form-check">
-                                    <input class="form-check-input table-option-import" type="checkbox" value="EInvoiceEnvs" id="import_EInvoiceEnvs">
-                                    <label class="form-check-label" for="import_EInvoiceEnvs">E-Invoice Environments</label>
-                                </div>
-                            </div>
-                            <div class="col">
-                                <div class="form-check">
-                                    <input class="form-check-input table-option-import" type="checkbox" value="Settings" id="import_Settings">
-                                    <label class="form-check-label" for="import_Settings">Settings</label>
-                                </div>
-                            </div>
-                            <div class="col">
-                                <div class="form-check">
-                                    <input class="form-check-input table-option-import" type="checkbox" value="Companies" id="import_Companies">
-                                    <label class="form-check-label" for="import_Companies">Companies</label>
-                                </div>
-                            </div>
-                            <div class="col">
-                                <div class="form-check">
-                                    <input class="form-check-input table-option-import" type="checkbox" value="CompEnvs" id="import_CompEnvs">
-                                    <label class="form-check-label" for="import_CompEnvs">Company Environments</label>
-                                </div>
-                            </div>
-                            <div class="col">
-                                <div class="form-check">
-                                    <input class="form-check-input table-option-import" type="checkbox" value="Logins" id="import_Logins">
-                                    <label class="form-check-label" for="import_Logins">Logins</label>
-                                </div>
-                            </div>
-                        </div>
-                        <input type="hidden" name="tables" id="importTables" />
-                        <div class="form-text">Leave "All tables" checked to import everything, or uncheck it and select specific tables.</div>
-                    </div>
-                    <button type="submit" class="btn btn-success"><i class="bi bi-file-earmark-arrow-up"></i> Import</button>
-                </form>
+                <p>Legacy migration runs offline. It snapshots the source, converts its schema, and validates a separate encrypted LiteDB database before switching. The source and current database are not overwritten.</p>
+                <ol>
+                    <li>Stop all application instances and preserve database and Data Protection backups.</li>
+                    <li>Set <code>Database:Migration:Enabled</code> to <code>true</code>, <code>Database:Migration:SourcePath</code> to the legacy file, and <code>Database:Path</code> to a new absolute destination.</li>
+                    <li>Supply the destination key through <code>Database:Password</code>. For encrypted LiteDB, also supply <code>Database:Migration:SourcePassword</code> through secure configuration.</li>
+                    <li>Run the application once and require a successful migration result. No web server or alert service runs in migration mode.</li>
+                    <li>Remove the migration settings and restart using the validated destination and its key.</li>
+                </ol>
+                <p class="mb-0">See <code>docs/security-hardening.md</code> for supported schemas, validation, recovery, and Graph key requirements. Live SQLite import is no longer supported.</p>
             </div>
         </div>
     </div>
@@ -214,7 +179,6 @@
         }
 
         bindTableSelection('restoreForm', 'restoreSelectAll', 'table-option-restore', 'restoreTables');
-        bindTableSelection('importForm', 'importSelectAll', 'table-option-import', 'importTables');
     });
 </script>
 }

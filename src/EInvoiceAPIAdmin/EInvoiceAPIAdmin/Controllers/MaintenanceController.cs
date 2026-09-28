@@ -1,22 +1,20 @@
-using System.Data;
 using InvoiceWebApp.Data;
 using InvoiceWebApp.Models;
 using LiteDB;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
-using Microsoft.Data.Sqlite;
+using InvoiceWebApp.Services;
 
 namespace InvoiceWebApp.Controllers;
 
 [Authorize]
 [Route("[controller]/[action]")]
-public class MaintenanceController(AppDbContext ctx, LiteDatabase liteDb, IWebHostEnvironment env) : Controller
+public class MaintenanceController(AppDbContext ctx, LiteDatabase liteDb, IWebHostEnvironment env, DatabaseSecurity databaseSecurity) : Controller
 {
     private readonly AppDbContext _ctx = ctx;
     private readonly LiteDatabase _liteDb = liteDb;
     private readonly IWebHostEnvironment _env = env;
 
-    private static string GetDbPath() => Path.GetFullPath(Path.Combine(AppContext.BaseDirectory, "..", "config.db"));
 
     private static readonly string[] KnownTables = new[]
     {
@@ -59,11 +57,7 @@ public class MaintenanceController(AppDbContext ctx, LiteDatabase liteDb, IWebHo
     {
         try
         {
-            var dbPath = GetDbPath();
-            if (!System.IO.File.Exists(dbPath))
-                return RedirectToAction(nameof(Index), new { error = "Database file not found." });
-
-            var bytes = System.IO.File.ReadAllBytes(dbPath);
+            var bytes = databaseSecurity.CreateBackup(_liteDb);
             var fileName = $"config_backup_{DateTime.UtcNow:yyyyMMdd_HHmmss}.db";
             return File(bytes, "application/octet-stream", fileName);
         }
@@ -77,14 +71,14 @@ public class MaintenanceController(AppDbContext ctx, LiteDatabase liteDb, IWebHo
     // Optionally restrict by comma/semicolon separated table names (use LiteDB collection names e.g. tb_Company)
     [HttpPost]
     [ValidateAntiForgeryToken]
-    public IActionResult Restore(IFormFile backupFile, string? tables)
+    public IActionResult Restore(IFormFile backupFile, string? tables, string? backupPassword)
     {
         if (backupFile == null || backupFile.Length == 0)
             return RedirectToAction(nameof(Index), new { error = "Please select a valid backup file." });
 
+        var tmpPath = Path.GetTempFileName();
         try
         {
-            var tmpPath = Path.GetTempFileName();
             using (var fs = System.IO.File.OpenWrite(tmpPath))
             {
                 backupFile.CopyTo(fs);
@@ -92,7 +86,8 @@ public class MaintenanceController(AppDbContext ctx, LiteDatabase liteDb, IWebHo
 
             var selected = ParseTables(tables);
             var processed = new List<string>();
-            using var src = new LiteDatabase($"Filename={tmpPath};Password=@Mina&29012017&Mariam@;Connection=shared;ReadOnly=true");
+            using var src = databaseSecurity.OpenBackup(tmpPath, string.IsNullOrEmpty(backupPassword) ? null : backupPassword);
+            if (!_liteDb.BeginTrans()) throw new InvalidOperationException("Unable to start restore transaction.");
 
             if (ShouldProcess("EInvoiceEnvs", selected)) { CopyCollection(src, _liteDb, "EInvoiceEnvs"); processed.Add("EInvoiceEnvs"); }
             if (ShouldProcess("Settings", selected)) { CopyCollection(src, _liteDb, "Settings"); processed.Add("Settings"); }
@@ -109,7 +104,7 @@ public class MaintenanceController(AppDbContext ctx, LiteDatabase liteDb, IWebHo
                 NormalizeCompaniesUseXmlToJson();
             }
 
-            System.IO.File.Delete(tmpPath);
+            _liteDb.Commit();
 
             if (selected is not null && processed.Count == 0)
             {
@@ -124,9 +119,14 @@ public class MaintenanceController(AppDbContext ctx, LiteDatabase liteDb, IWebHo
 
             return RedirectToAction(nameof(Index), new { message = msg });
         }
-        catch (Exception ex)
+        catch (Exception)
         {
-            return RedirectToAction(nameof(Index), new { error = ex.Message });
+            _liteDb.Rollback();
+            return RedirectToAction(nameof(Index), new { error = "Restore failed. Verify the backup file, password, and account data. No restore changes were committed." });
+        }
+        finally
+        {
+            System.IO.File.Delete(tmpPath);
         }
     }
 
@@ -134,280 +134,35 @@ public class MaintenanceController(AppDbContext ctx, LiteDatabase liteDb, IWebHo
     {
         var srcCol = src.GetCollection(name);
         var destCol = dest.GetCollection(name);
+        var documents = srcCol.FindAll().ToList();
+        if (name == "Logins")
+        {
+            if (documents.Count == 0) throw new InvalidOperationException("Cannot restore an empty account collection.");
+            foreach (var document in documents) AccountSecurity.NormalizeDocument(document, renewStamp: true);
+        }
 
         // Clear destination
         destCol.DeleteAll();
 
         // Enumerate all docs and insert
-        foreach (var doc in srcCol.FindAll())
+        foreach (var doc in documents)
         {
             destCol.Upsert(doc);
         }
     }
 
-    // IMPORT FROM SQLITE: reads from a provided sqlite file and migrates rows into LiteDB
-    // Optionally restrict by comma/semicolon separated table names (use SQLite table names e.g. tb_Company)
     [HttpPost]
     [ValidateAntiForgeryToken]
-    public IActionResult ImportFromSqlite(IFormFile sqliteFile, string? tables)
+    public IActionResult ImportFromSqlite() => RedirectToAction(nameof(Index), new
     {
-        if (sqliteFile == null || sqliteFile.Length == 0)
-            return RedirectToAction(nameof(Index), new { error = "Please select a valid SQLite file." });
+        error = "Live import is disabled. Migrate SQLite or legacy LiteDB offline into a separate validated database using Database:Migration settings. See docs/security-hardening.md."
+    });
 
-        var tmpPath = Path.GetTempFileName();
-        try
-        {
-            using (var upload = sqliteFile.OpenReadStream())
-            using (var fs = System.IO.File.Open(tmpPath, FileMode.Create, FileAccess.Write, FileShare.None))
-            {
-                upload.CopyTo(fs);
-            }
-
-            var selected = ParseTables(tables);
-            var processed = new List<string>();
-
-            using (var conn = new SqliteConnection($"Data Source={tmpPath};Mode=ReadOnly;Pooling=False"))
-            using (var cmd = conn.CreateCommand())
-            {
-                conn.Open();
-
-                if (ShouldProcess("tb_eInvoiceEnv", selected)) { TryImportEInvoiceEnv(cmd); processed.Add("tb_eInvoiceEnv"); }
-                if (ShouldProcess("tb_Settings", selected)) { TryImportSettings(cmd); processed.Add("tb_Settings"); }
-                if (ShouldProcess("tb_Company", selected)) { TryImportCompanies(cmd); processed.Add("tb_Company"); }
-                if (ShouldProcess("tb_CompEnv", selected)) { TryImportCompEnv(cmd); processed.Add("tb_CompEnv"); }
-                if (ShouldProcess("tb_Login", selected)) { TryImportLogin(cmd); processed.Add("tb_Login"); }
-            }
-
-            // Normalize after import only if companies were included or all tables
-            if (ShouldProcess("tb_Company", selected))
-            {
-                NormalizeCompaniesUseXmlToJson();
-            }
-
-            if (selected is not null && processed.Count == 0)
-            {
-                var known = string.Join(", ", KnownTables);
-                return RedirectToAction(nameof(Index), new { error = $"No recognized tables selected. Known tables: {known}" });
-            }
-
-            var msg = selected is null
-                ? "Import completed successfully (all tables)."
-                : $"Import completed successfully. Tables: {string.Join(", ", processed)}";
-
-            return RedirectToAction(nameof(Index), new { message = msg });
-        }
-        catch (Exception ex)
-        {
-            return RedirectToAction(nameof(Index), new { error = ex.Message });
-        }
-        finally
-        {
-            try { System.IO.File.Delete(tmpPath); } catch { }
-        }
-    }
-
-    private void TryImportEInvoiceEnv(SqliteCommand cmd)
+    // To remove the empty lines in the end of file
+    ~MaintenanceController()
     {
-        try
-        {
-            cmd.CommandText = "SELECT Id, EnvName, EnvTokenUrl, EnvInvoicingUrl FROM tb_eInvoiceEnv";
-            using var rdr = cmd.ExecuteReader();
-            var col = _ctx.EInvoiceEnvs;
-            while (rdr.Read())
-            {
-                var item = new EInvoiceEnv
-                {
-                    Id = rdr.GetInt32(0),
-                    EnvName = rdr.GetString(1),
-                    EnvTokenUrl = rdr.GetString(2),
-                    EnvInvoicingUrl = rdr.GetString(3)
-                };
-                col.Upsert(item);
-            }
-        }
-        catch { /* table may not exist */ }
-    }
-
-    private void TryImportSettings(SqliteCommand cmd)
-    {
-        try
-        {
-            cmd.CommandText = "SELECT Id, SettingName, SettingValue FROM tb_Settings Where SettingName <> 'DateTimeFormat'";
-            using var rdr = cmd.ExecuteReader();
-            var col = _ctx.Settings;
-            while (rdr.Read())
-            {
-                var item = new Settings
-                {
-                    Id = rdr.GetInt32(0),
-                    SettingName = rdr.IsDBNull(1) ? string.Empty : rdr.GetString(1),
-                    SettingValue = rdr.IsDBNull(2) ? string.Empty : rdr.GetString(2)
-                };
-                col.Upsert(item);
-            }
-        }
-        catch { }
-    }
-
-    // UPDATED: robust import for tb_Company
-    private void TryImportCompanies(SqliteCommand cmd)
-    {
-        try
-        {
-            cmd.CommandText = "SELECT * FROM tb_Company";
-            using var rdr = cmd.ExecuteReader();
-
-            // Resolve column indexes (case-insensitive)
-            int idxId = GetOrdinalCI(rdr, "Id");
-            if (idxId < 0) return; // cannot import without Id
-
-            int idxCompanyCode = GetOrdinalCI(rdr, "CompanyCode");
-            int idxCompanyName = GetOrdinalCI(rdr, "CompanyName");
-            int idxTokenSerial = GetOrdinalCI(rdr, "TokenSerial");
-            int idxTokenPin = GetOrdinalCI(rdr, "TokenPin");
-            int idxCertSerialNum = GetOrdinalCI(rdr, "CertSerialNum");
-            int idxUseXMLTOJSON = GetOrdinalCI(rdr, "UseXMLTOJSON");
-
-            var col = _ctx.Companies;
-
-            while (rdr.Read())
-            {
-                try
-                {
-                    var idObj = rdr.GetValue(idxId);
-                    if (idObj is DBNull) continue;
-                    int id = Convert.ToInt32(idObj);
-
-                    long? companyCode = GetNullableInt64(rdr, idxCompanyCode);
-                    string companyName = GetStringSafe(rdr, idxCompanyName) ?? string.Empty;
-                    string tokenSerial = GetStringSafe(rdr, idxTokenSerial) ?? string.Empty;
-                    string tokenPin = GetStringSafe(rdr, idxTokenPin) ?? string.Empty;
-                    string certSerialNum = GetStringSafe(rdr, idxCertSerialNum) ?? string.Empty;
-
-                    // Normalize UseXMLTOJSON: accept 1/0, true/false, or text
-                    string useXmlStr = NormalizeToString(rdr, idxUseXMLTOJSON) ?? string.Empty;
-
-                    var item = new Company
-                    {
-                        Id = id,
-                        CompanyCode = companyCode,
-                        CompanyName = companyName,
-                        TokenSerial = tokenSerial,
-                        TokenPin = tokenPin,
-                        CertSerialNum = certSerialNum,
-                        UseXMLTOJSON = useXmlStr
-                    };
-
-                    col.Upsert(item);
-                }
-                catch
-                {
-                    // skip problematic row, continue with next
-                }
-            }
-        }
-        catch
-        {
-            // table may not exist or query failed
-        }
-    }
-
-    private void TryImportCompEnv(SqliteCommand cmd)
-    {
-        try
-        {
-            cmd.CommandText = "SELECT Id, CompanyId, EnvId, ClientId, ClientSecret, str_token, time_get FROM tb_CompEnv";
-            using var rdr = cmd.ExecuteReader();
-            var col = _ctx.CompEnvs;
-            while (rdr.Read())
-            {
-                var item = new CompEnv
-                {
-                    Id = rdr.GetInt32(0),
-                    CompanyId = rdr.IsDBNull(1) ? 0 : rdr.GetInt64(1),
-                    EnvId = rdr.IsDBNull(2) ? 0 : rdr.GetInt64(2),
-                    ClientId = rdr.IsDBNull(3) ? null : rdr.GetString(3),
-                    ClientSecret = rdr.IsDBNull(4) ? null : rdr.GetString(4),
-                    str_token = rdr.IsDBNull(5) ? null : rdr.GetString(5)
-                    //time_get = rdr.IsDBNull(6) ? null : rdr.GetString(6)
-                };
-                col.Upsert(item);
-            }
-        }
-        catch { }
-    }
-
-    private void TryImportLogin(SqliteCommand cmd)
-    {
-        try
-        {
-            cmd.CommandText = "SELECT Id, u_name, u_pass, IsInitial FROM tb_Login";
-            using var rdr = cmd.ExecuteReader();
-            var col = _ctx.Logins;
-            while (rdr.Read())
-            {
-                var item = new Login
-                {
-                    Id = rdr.GetInt32(0),
-                    u_name = rdr.IsDBNull(1) ? string.Empty : rdr.GetString(1),
-                    u_pass = rdr.IsDBNull(2) ? string.Empty : rdr.GetString(2),
-                    IsInitial = !rdr.IsDBNull(3) && rdr.GetBoolean(3)
-                };
-                col.Upsert(item);
-            }
-        }
-        catch { }
-    }
-
-    // -------- Helpers (case-insensitive column lookup + safe conversions) --------
-    private static int GetOrdinalCI(SqliteDataReader rdr, string name)
-    {
-        for (int i = 0; i < rdr.FieldCount; i++)
-        {
-            if (string.Equals(rdr.GetName(i), name, StringComparison.OrdinalIgnoreCase))
-                return i;
-        }
-        return -1;
-    }
-
-    private static string? GetStringSafe(SqliteDataReader rdr, int idx)
-    {
-        if (idx < 0) return null;
-        var val = rdr.GetValue(idx);
-        if (val is DBNull) return null;
-        return val?.ToString();
-    }
-
-    private static long? GetNullableInt64(SqliteDataReader rdr, int idx)
-    {
-        if (idx < 0) return null;
-        var val = rdr.GetValue(idx);
-        if (val is DBNull || val is null) return null;
-
-        if (val is long l) return l;
-        if (val is int i) return i;
-        if (val is short s) return s;
-        if (val is byte b) return b;
-        if (val is double d) return (long)d;
-        if (val is float f) return (long)f;
-        if (val is decimal m) return (long)m;
-
-        if (val is string sVal && long.TryParse(sVal, out var parsed))
-            return parsed;
-
-        return null;
-    }
-
-    private static string? NormalizeToString(SqliteDataReader rdr, int idx)
-    {
-        var s = GetStringSafe(rdr, idx);
-        if (s == null) return null;
-
-        // If it's numeric-like 0/1 keep as-is; otherwise return the string
-        var trimmed = s.Trim();
-        if (trimmed == "0" || trimmed == "1") return trimmed;
-        if (bool.TryParse(trimmed, out var b)) return b ? "1" : "0"; // map true/false to 1/0 to match legacy usage
-        return trimmed;
+        _ctx.Dispose();
+        _liteDb.Dispose();
     }
 
     [HttpPost]

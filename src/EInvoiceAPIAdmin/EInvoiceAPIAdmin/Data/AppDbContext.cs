@@ -3,6 +3,7 @@ using LiteDB;
 using System.Collections.Generic;
 using System.Linq;
 using System.Text.Json;
+using InvoiceWebApp.Services;
 
 namespace InvoiceWebApp.Data
 {
@@ -27,18 +28,32 @@ namespace InvoiceWebApp.Data
         {
             _db = new LiteDatabase(databasePath);
             _ownsDb = true;
-            ConfigureMapper();
-            MigrateLegacyCollections();
-            EnsureSchemaAndSeed();
+            try { Initialize(); }
+            catch { _db.Dispose(); throw; }
         }
 
         public AppDbContext(LiteDatabase db)
         {
             _db = db;
             _ownsDb = false;
+            Initialize();
+        }
+
+        private void Initialize()
+        {
             ConfigureMapper();
-            MigrateLegacyCollections();
-            EnsureSchemaAndSeed();
+            if (!_db.BeginTrans()) throw new InvalidOperationException("Schema initialization requires its own transaction.");
+            try
+            {
+                MigrateLegacyCollections();
+                EnsureSchemaAndSeed();
+                _db.Commit();
+            }
+            catch
+            {
+                _db.Rollback();
+                throw;
+            }
         }
 
         private static void ConfigureMapper()
@@ -48,55 +63,32 @@ namespace InvoiceWebApp.Data
             // Additional configuration can go here if needed.
         }
 
+        internal static readonly IReadOnlyDictionary<string, string> LegacyCollectionNames =
+            new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase)
+            {
+                ["tb_Company"] = "Companies", ["Company"] = "Companies",
+                ["tb_CompEnv"] = "CompEnvs", ["CompEnv"] = "CompEnvs",
+                ["tb_eInvoiceEnv"] = "EInvoiceEnvs", ["eInvoiceEnv"] = "EInvoiceEnvs",
+                ["tb_Settings"] = "Settings", ["tb_Login"] = "Logins", ["Login"] = "Logins"
+            };
+
+        internal static string CurrentCollectionName(string name) =>
+            LegacyCollectionNames.TryGetValue(name, out var current) ? current : name;
+
         private void MigrateLegacyCollections()
         {
-            // If old collections exist, copy data into the new collections
-            // We migrate from:
-            //   - legacy "tb_*" names
-            //   - previous singular names (Company, CompEnv, eInvoiceEnv, Login)
-            // Only copy when the target collection is empty to avoid duplications
-            HashSet<string> names;
-            try
+            var names = _db.GetCollectionNames().ToList();
+            foreach (var group in names.GroupBy(CurrentCollectionName, StringComparer.OrdinalIgnoreCase))
             {
-                names = _db.GetCollectionNames().ToHashSet(System.StringComparer.OrdinalIgnoreCase);
+                var populated = group.Where(name => _db.GetCollection(name).LongCount() > 0).ToList();
+                if (populated.Count > 1)
+                    throw new InvalidOperationException($"Conflicting legacy/current collections for {group.Key}. Reconcile them on a copy before migration.");
+                var source = populated.FirstOrDefault() ?? group.First();
+                foreach (var empty in group.Where(name => name != source)) _db.DropCollection(empty);
+                if (!string.Equals(source, group.Key, StringComparison.OrdinalIgnoreCase))
+                    _db.RenameCollection(source, group.Key);
             }
-            catch
-            {
-                // In case GetCollectionNames is unavailable, skip migration silently
-                return;
-            }
-
-            void CopyIfExists<T>(string oldName, string newName)
-            {
-                if (!names.Contains(oldName)) return;
-                var target = _db.GetCollection<T>(newName);
-                if (target.Count() > 0) return;
-                var source = _db.GetCollection<T>(oldName);
-                foreach (var doc in source.FindAll())
-                {
-                    target.Upsert(doc);
-                }
-            }
-
-            // Companies
-            CopyIfExists<Company>("tb_Company", "Companies");
-            CopyIfExists<Company>("Company", "Companies");
-
-            // CompEnvs
-            CopyIfExists<CompEnv>("tb_CompEnv", "CompEnvs");
-            CopyIfExists<CompEnv>("CompEnv", "CompEnvs");
-
-            // EInvoiceEnvs
-            CopyIfExists<EInvoiceEnv>("tb_eInvoiceEnv", "EInvoiceEnvs");
-            CopyIfExists<EInvoiceEnv>("eInvoiceEnv", "EInvoiceEnvs");
-
-            // Settings (already plural previously)
-            CopyIfExists<Settings>("tb_Settings", "Settings");
-            // No need to copy from "Settings" to "Settings"
-
-            // Logins
-            CopyIfExists<Login>("tb_Login", "Logins");
-            CopyIfExists<Login>("Login", "Logins");
+            AccountSecurity.Migrate(_db);
         }
 
         private void EnsureSchemaAndSeed()
@@ -125,10 +117,6 @@ namespace InvoiceWebApp.Data
 
             MigrateLegacyAlertsConfigFromSettings();
 
-            if (Logins.Count() == 0)
-            {
-                Logins.Insert(new Login { Id = 1, u_name = "mina.mouris", u_pass = "Mariam1995", IsInitial = true });
-            }
             if (EInvoiceEnvs.Count() == 0)
             {
                 EInvoiceEnvs.Insert(new EInvoiceEnv { Id = 1, EnvName = "PreProd", EnvTokenUrl = "https://id.preprod.eta.gov.eg/connect/token", EnvInvoicingUrl = "https://api.preprod.invoicing.eta.gov.eg/api/v1/" });
@@ -308,9 +296,9 @@ namespace InvoiceWebApp.Data
                     }
                 }
             }
-            catch
+            catch (Exception ex) when (ex is JsonException or InvalidOperationException or FormatException)
             {
-                // ignore malformed legacy config
+                throw new InvalidOperationException("Legacy Alerts.Config is invalid. Schema initialization was rolled back.", ex);
             }
         }
     }

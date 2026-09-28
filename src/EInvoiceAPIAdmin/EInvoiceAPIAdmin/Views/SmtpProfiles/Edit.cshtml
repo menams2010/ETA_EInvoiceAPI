@@ -5,11 +5,85 @@
 
 <h3>Edit SMTP Profile</h3>
 
+<div class="alert alert-info">
+    System.Net.Mail supports None (unencrypted) and STARTTLS only, not implicit SSL/TLS (typically port 465).
+    Select Microsoft Graph for OAuth2 with Microsoft 365 or personal Outlook.com, including MFA.
+    Save the provider selection before connecting or testing. SMTP fields below are ignored for Graph; Graph sends as the connected account.
+    MFA and password authentication availability depend on the provider's policy; an app password does not bypass disabled password authentication.
+</div>
+
+@if (Model.DeliveryProvider == InvoiceWebApp.Models.SmtpProfile.ProviderGraph)
+{
+    @if (TempData["GraphRegistrationMessage"] is string registrationMessage)
+    {
+        <div class="alert alert-success">@registrationMessage</div>
+    }
+    @if (TempData["GraphRegistrationError"] is string registrationError)
+    {
+        <div class="alert alert-danger">@registrationError</div>
+    }
+    <div class="card mb-3">
+        <div class="card-body">
+            <h5>Microsoft app registration for this profile</h5>
+            <form asp-action="SaveMicrosoftRegistration" method="post">
+                @Html.AntiForgeryToken()
+                <input type="hidden" name="id" value="@Model.Id" />
+                <div class="mb-3">
+                    <label class="form-label" for="graphClientId">Application (client) ID</label>
+                    <input class="form-control" id="graphClientId" name="clientId" value="@ViewBag.GraphClientId" required />
+                </div>
+                <div class="mb-3">
+                    <label class="form-label" for="graphClientSecret">Client secret value</label>
+                    <input class="form-control" id="graphClientSecret" name="clientSecret" type="password" autocomplete="new-password" />
+                    <div class="form-text">
+                        @(ViewBag.GraphCredentialsSaved == true ? "A secret is saved. Leave blank to keep it." : "Enter the secret value, not the Secret ID.")
+                        Secrets are encrypted and never displayed. Changing the application ID requires a new secret.
+                    </div>
+                </div>
+                <button class="btn btn-primary" type="submit">Save Microsoft registration</button>
+            </form>
+            <form asp-action="RemoveMicrosoftRegistration" method="post" class="mt-2">
+                @Html.AntiForgeryToken()
+                <input type="hidden" name="id" value="@Model.Id" />
+                <button class="btn btn-outline-danger" type="submit" onclick="return confirm('Remove this profile’s Microsoft credentials and mailbox connection?');">Remove Microsoft registration</button>
+            </form>
+            <p class="form-text mt-2 mb-0">
+                Register a Web redirect URI at your application's HTTPS origin followed by /signin-microsoft-mail.
+                Enable organizational and personal accounts, with delegated Mail.Send and User.Read permissions.
+                Store the user-entered client/secret expiration date in the appropriate CompEnv record for alerts.
+            </p>
+        </div>
+    </div>
+    <div class="alert alert-secondary">
+        <p>Microsoft mailbox: <strong>@(ViewBag.GraphMailbox ?? "Not connected — connect before sending")</strong></p>
+        <form asp-action="ConnectMicrosoft" method="post" class="d-inline">
+            @Html.AntiForgeryToken()
+            <input type="hidden" name="id" value="@Model.Id" />
+            <button type="submit" class="btn btn-primary">Connect / reconnect Microsoft account</button>
+        </form>
+        <form asp-action="DisconnectMicrosoft" method="post" class="d-inline">
+            @Html.AntiForgeryToken()
+            <input type="hidden" name="id" value="@Model.Id" />
+            <button type="submit" class="btn btn-outline-danger">Disconnect</button>
+        </form>
+        <div class="form-text">Save this profile's Microsoft registration above before connecting. Disconnect removes local tokens but keeps the registration; revoke app consent in Microsoft account settings if needed.</div>
+    </div>
+}
+
 <form asp-action="Edit" method="post" class="mt-3" id="smtpForm">
     @Html.AntiForgeryToken()
     <input type="hidden" asp-for="Id" />
+    <div asp-validation-summary="All" class="text-danger"></div>
 
     <div class="row g-3">
+        <div class="col-12">
+            <label class="form-label" asp-for="DeliveryProvider">Delivery Provider</label>
+            <select class="form-select" asp-for="DeliveryProvider">
+                <option value="Smtp">SMTP (System.Net.Mail)</option>
+                <option value="MicrosoftGraph">Microsoft Graph (OAuth2)</option>
+            </select>
+            <span asp-validation-for="DeliveryProvider" class="text-danger"></span>
+        </div>
         <div class="col-12 col-md-6">
             <label class="form-label" asp-for="Name"></label>
             <input class="form-control" asp-for="Name" />
@@ -22,35 +96,41 @@
         </div>
 
         <div class="col-12 col-md-6">
-            <label class="form-label" asp-for="Host"></label>
+            <label class="form-label" asp-for="Host">Host (SMTP only)</label>
             <input class="form-control" asp-for="Host" />
         </div>
         <div class="col-12 col-md-3">
             <label class="form-label" asp-for="Port"></label>
             <input class="form-control" asp-for="Port" />
         </div>
-        <div class="col-12 col-md-3 d-flex align-items-end">
-            <div class="form-check">
-                <input class="form-check-input" asp-for="EnableSsl" />
-                <label class="form-check-label" asp-for="EnableSsl"></label>
-            </div>
+        <div class="col-12 col-md-3">
+            <label class="form-label" asp-for="EncryptionMethod">Encryption Method</label>
+            <select class="form-select" asp-for="EncryptionMethod">
+                <option value="None">None</option>
+                <option value="StartTls">STARTTLS</option>
+                @if (Model.GetEncryptionValidationError() is not null)
+                {
+                    <option value="@Model.EncryptionMethod">@Model.EncryptionMethod (unsupported; select None or STARTTLS)</option>
+                }
+            </select>
+            <span asp-validation-for="EncryptionMethod" class="text-danger"></span>
         </div>
 
         <div class="col-12 col-md-6">
-            <label class="form-label" asp-for="Username"></label>
+            <label class="form-label" asp-for="Username">Username (SMTP only)</label>
             <input class="form-control" asp-for="Username" />
         </div>
         <div class="col-12 col-md-6">
-            <label class="form-label" asp-for="Password"></label>
+            <label class="form-label" asp-for="Password">Password (SMTP only)</label>
             <input class="form-control" asp-for="Password" />
         </div>
 
         <div class="col-12 col-md-6">
-            <label class="form-label" asp-for="FromEmail"></label>
+            <label class="form-label" asp-for="FromEmail">From Email (SMTP only)</label>
             <input class="form-control" asp-for="FromEmail" />
         </div>
         <div class="col-12 col-md-6">
-            <label class="form-label" asp-for="FromName"></label>
+            <label class="form-label" asp-for="FromName">From Name (SMTP only)</label>
             <input class="form-control" asp-for="FromName" />
         </div>
 
@@ -89,10 +169,13 @@
         btn.disabled = true;
         btn.innerHTML = '<span class="spinner-border spinner-border-sm"></span> Testing...';
 
+        const encryptionMethod = form.querySelector('[name="EncryptionMethod"]').value;
         const data = {
+            profileId: parseInt(form.querySelector('[name="Id"]').value),
+            deliveryProvider: form.querySelector('[name="DeliveryProvider"]').value,
             host: form.querySelector('[name="Host"]').value,
             port: parseInt(form.querySelector('[name="Port"]').value) || 587,
-            enableSsl: form.querySelector('[name="EnableSsl"]').checked,
+            encryptionMethod: encryptionMethod,
             username: form.querySelector('[name="Username"]').value,
             password: form.querySelector('[name="Password"]').value,
             fromEmail: form.querySelector('[name="FromEmail"]').value,

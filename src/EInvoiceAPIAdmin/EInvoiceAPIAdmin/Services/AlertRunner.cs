@@ -3,10 +3,96 @@ using InvoiceWebApp.Models;
 
 namespace InvoiceWebApp.Services;
 
-public class AlertRunner(AppDbContext ctx, SmtpEmailSender sender)
+public class AlertRunner(AppDbContext ctx, EmailSender sender)
 {
     private readonly AppDbContext _ctx = ctx;
-    private readonly SmtpEmailSender _sender = sender;
+    private readonly EmailSender _sender = sender;
+
+    public IReadOnlyList<AlertTestEntity> GetTestEntities(AlertType type)
+    {
+        if (type == AlertType.CertificateExpiration)
+            return GetCertificatesWithExpiry()
+                .Select(x => new AlertTestEntity(x.EntityKey, x.DisplayName, x.ExpiryDateUtc.Date, string.Empty, string.Empty))
+                .OrderBy(x => x.DisplayName).ToList();
+
+        if (type != AlertType.ClientSecretExpiration)
+            throw new InvalidOperationException("Unsupported alert type.");
+
+        var companies = _ctx.Companies.FindAll().ToDictionary(x => (long)x.Id);
+        var environments = _ctx.EInvoiceEnvs.FindAll().ToDictionary(x => (long)x.Id);
+        return _ctx.CompEnvs.Find(x => x.ClientSecretExpiryDate != null).Select(x =>
+        {
+            var company = companies.TryGetValue(x.CompanyId, out var c)
+                ? $"{c.CompanyCode} - {c.CompanyName}" : x.CompanyId.ToString();
+            var environment = environments.TryGetValue(x.EnvId, out var e) ? e.EnvName : x.EnvId.ToString();
+            return new AlertTestEntity($"CompEnv:{x.Id}", $"{company} / {environment}",
+                x.ClientSecretExpiryDate!.Value.Date, company, environment);
+        }).OrderBy(x => x.DisplayName).ToList();
+    }
+
+    public async Task SendTestAsync(int ruleId, string dataSource, string? entityKey, CancellationToken ct)
+    {
+        ct.ThrowIfCancellationRequested();
+        var rule = _ctx.AlertRules.FindById(ruleId)
+            ?? throw new InvalidOperationException("Alert rule not found.");
+        if (rule.Type is not (AlertType.CertificateExpiration or AlertType.ClientSecretExpiration))
+            throw new InvalidOperationException("Unsupported alert type.");
+        if (dataSource is not ("Sample" or "Real"))
+            throw new InvalidOperationException("Select sample data or one real record.");
+
+        var profile = (rule.SmtpProfileId is int profileId ? _ctx.SmtpProfiles.FindById(profileId) : null)
+            ?? _ctx.SmtpProfiles.FindOne(x => x.IsDefault) ?? _ctx.SmtpProfiles.FindAll().FirstOrDefault()
+            ?? throw new InvalidOperationException("No mail profile is configured for this rule.");
+        if (profile.DeliveryProvider == SmtpProfile.ProviderSmtp && string.IsNullOrWhiteSpace(profile.Host))
+            throw new InvalidOperationException("Configure the SMTP host on the rule's mail profile first.");
+        var template = (rule.EmailTemplateId is int templateId ? _ctx.EmailTemplates.FindById(templateId) : null)
+            ?? _ctx.EmailTemplates.FindAll().FirstOrDefault()
+            ?? throw new InvalidOperationException("No email template is configured for this rule.");
+        var to = AlertTemplateRenderer.SplitEmails(rule.To).ToArray();
+        var cc = AlertTemplateRenderer.SplitEmails(rule.Cc).ToArray();
+        if (to.Length == 0 && cc.Length == 0)
+            throw new InvalidOperationException("Configure at least one To or CC recipient on this rule first.");
+
+        var today = DateTime.UtcNow.Date;
+        AlertTestEntity entity;
+        if (dataSource == "Real")
+        {
+            entity = GetTestEntities(rule.Type).FirstOrDefault(x => x.Key == entityKey)
+                ?? throw new InvalidOperationException("Select an available record for this alert type. The record may have been removed or no longer have an expiration date.");
+        }
+        else
+        {
+            DateTime expiration;
+            try { expiration = today.AddDays(rule.DaysBeforeExpiration); }
+            catch (ArgumentOutOfRangeException)
+            {
+                throw new InvalidOperationException("The rule's days-before-expiration value is outside the supported date range.");
+            }
+            var isClient = rule.Type == AlertType.ClientSecretExpiration;
+            entity = new AlertTestEntity("Sample", isClient ? "Sample company / Sample environment" : "Sample certificate",
+                expiration, isClient ? "Sample company" : string.Empty, isClient ? "Sample environment" : string.Empty);
+        }
+
+        var days = (entity.ExpirationDate.Date - today).Days;
+        var values = new Dictionary<string, string?>
+        {
+            ["Type"] = rule.Type == AlertType.ClientSecretExpiration ? "Client/Secret" : "Certificate",
+            ["Days"] = days.ToString(),
+            ["ExpirationDate"] = entity.ExpirationDate.ToString("yyyy-MM-dd"),
+            ["Entity"] = entity.DisplayName,
+            ["CompanyName"] = entity.CompanyName,
+            ["Environment"] = entity.Environment,
+            ["RuleName"] = rule.Name,
+            ["Severity"] = days <= 0 ? "Critical" : days <= 7 ? "Warning" : "Info"
+        };
+        var notice = dataSource == "Sample"
+            ? "TEST ALERT — sample data. This is not a scheduled expiration notification."
+            : "TEST ALERT — selected real record. This is not a scheduled expiration notification.";
+        var body = AlertTemplateRenderer.Render(template.Body, values);
+        body = template.IsHtml ? $"<p><strong>{notice}</strong></p>{body}" : $"{notice}\n\n{body}";
+        await _sender.SendAsync(profile, to, cc, "[TEST] " + AlertTemplateRenderer.Render(template.Subject, values),
+            body, template.IsHtml, ct);
+    }
 
     public async Task RunOnceAsync(CancellationToken ct)
     {
@@ -40,7 +126,7 @@ public class AlertRunner(AppDbContext ctx, SmtpEmailSender sender)
                     ? defaultSmtp
                     : _ctx.SmtpProfiles.FindById(rule.SmtpProfileId.Value) ?? defaultSmtp;
 
-                if (smtp is null || string.IsNullOrWhiteSpace(smtp.Host))
+                if (smtp is null || (smtp.DeliveryProvider == SmtpProfile.ProviderSmtp && string.IsNullOrWhiteSpace(smtp.Host)))
                     continue; // not configured
 
                 EmailTemplate? template = null;
@@ -99,7 +185,7 @@ public class AlertRunner(AppDbContext ctx, SmtpEmailSender sender)
                     ? defaultSmtp
                     : _ctx.SmtpProfiles.FindById(rule.SmtpProfileId.Value) ?? defaultSmtp;
 
-                if (smtp is null || string.IsNullOrWhiteSpace(smtp.Host))
+                if (smtp is null || (smtp.DeliveryProvider == SmtpProfile.ProviderSmtp && string.IsNullOrWhiteSpace(smtp.Host)))
                     continue;
 
                 EmailTemplate? template = null;

@@ -6,6 +6,7 @@
     <ImplicitUsings>enable</ImplicitUsings>
     <RootNamespace>InvoiceWebApp</RootNamespace>
     <AssemblyName>EInvoiceAPIAdmin</AssemblyName>
+    <UserSecretsId>EInvoiceAPIAdmin-58ab7797-23df-4ef9-9cf1-8873c281102d</UserSecretsId>
   </PropertyGroup>
 
   <ItemGroup>

@@ -1,5 +1,6 @@
 using InvoiceWebApp.Data;
 using InvoiceWebApp.Models;
+using InvoiceWebApp.Services;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.Mvc.Rendering;
@@ -8,7 +9,7 @@ namespace InvoiceWebApp.Controllers;
 
 [Authorize]
 [Route("[controller]/[action]")]
-public class AlertRulesController(AppDbContext ctx) : Controller
+public class AlertRulesController(AppDbContext ctx, AlertRunner runner) : Controller
 {
     private readonly AppDbContext _ctx = ctx;
 
@@ -18,6 +19,8 @@ public class AlertRulesController(AppDbContext ctx) : Controller
         ViewBag.Message = message;
         ViewBag.Error = error;
         ViewBag.Type = type;
+        ViewBag.SmtpProfiles = new SelectList(_ctx.SmtpProfiles.FindAll().OrderBy(x => x.Name),
+            nameof(SmtpProfile.Id), nameof(SmtpProfile.Name));
 
         var q = _ctx.AlertRules.FindAll().AsQueryable();
         if (type.HasValue)
@@ -84,6 +87,117 @@ public class AlertRulesController(AppDbContext ctx) : Controller
 
         _ctx.AlertRules.Delete(id);
         return RedirectToAction(nameof(Index), new { message = "Rule deleted.", type = existing.Type });
+    }
+
+    [HttpGet]
+    public IActionResult Test(int id)
+    {
+        var rule = _ctx.AlertRules.FindById(id);
+        if (rule is null) return RedirectToAction(nameof(Index), new { error = "Rule not found." });
+        var model = new AlertRuleTestViewModel { Id = id, Rule = rule };
+        PopulateTestEntities(model);
+        return View(model);
+    }
+
+    [HttpPost]
+    [ValidateAntiForgeryToken]
+    public async Task<IActionResult> Test([Bind("Id,DataSource,EntityKey,ConfirmSend")] AlertRuleTestViewModel model)
+    {
+        var rule = _ctx.AlertRules.FindById(model.Id);
+        if (rule is null) return RedirectToAction(nameof(Index), new { error = "Rule not found." });
+        model.Rule = rule;
+        PopulateTestEntities(model);
+        if (!model.ConfirmSend)
+            ModelState.AddModelError(nameof(model.ConfirmSend), "Confirm that you want to send to the saved rule's To/CC recipients.");
+        if (model.DataSource is not ("Sample" or "Real"))
+            ModelState.AddModelError(nameof(model.DataSource), "Select sample data or one real record.");
+        if (model.DataSource == "Real" && !model.Entities.Any(x => x.Key == model.EntityKey))
+            ModelState.AddModelError(nameof(model.EntityKey), "Select an available real record.");
+        if (!ModelState.IsValid) return View(model);
+
+        try
+        {
+            await runner.SendTestAsync(model.Id, model.DataSource, model.EntityKey, HttpContext.RequestAborted);
+            return RedirectToAction(nameof(Index), new
+            {
+                type = rule.Type,
+                message = "Test alert submitted to the saved rule's To/CC recipients. Check the recipient mailbox; provider acceptance does not guarantee delivery. Scheduled alerts are unchanged."
+            });
+        }
+        catch (OperationCanceledException) when (HttpContext.RequestAborted.IsCancellationRequested)
+        {
+            throw;
+        }
+        catch (Exception ex)
+        {
+            ModelState.AddModelError(string.Empty, $"Failed to send test alert: {ex.Message}");
+            return View(model);
+        }
+    }
+
+    [HttpPost]
+    [ValidateAntiForgeryToken]
+    public IActionResult BatchEdit(AlertRuleBatchEdit model, [FromServices] LiteDB.LiteDatabase database)
+    {
+        IActionResult Failure(string error) => RedirectToAction(nameof(Index), new { type = model.Type, error });
+        if (!ModelState.IsValid)
+            return Failure("Invalid batch settings. No rules were changed.");
+        var ids = (model.SelectedIds ?? []).Distinct().ToArray();
+        if (ids.Length == 0)
+            return Failure("Select at least one alert rule.");
+        if (!model.ChangeTo && !model.ChangeCc && !model.ChangeEnabled && !model.ChangeSmtpProfile)
+            return Failure("Select at least one field to change.");
+
+        bool ValidRecipients(string? value) => AlertTemplateRenderer.SplitEmails(value)
+            .All(address => System.Net.Mail.MailAddress.TryCreate(address, out _));
+        if ((model.ChangeTo && !ValidRecipients(model.To)) || (model.ChangeCc && !ValidRecipients(model.Cc)))
+            return Failure("To and CC must contain valid email addresses separated by commas or semicolons. No rules were changed.");
+
+        if (!database.BeginTrans())
+            return Failure("Unable to start the batch update. No rules were changed.");
+        try
+        {
+            if (model.ChangeSmtpProfile && model.SmtpProfileId is int profileId
+                && _ctx.SmtpProfiles.FindById(profileId) is null)
+            {
+                database.Rollback();
+                return Failure("The selected mail profile no longer exists. No rules were changed.");
+            }
+            var rules = ids.Select(id => _ctx.AlertRules.FindById(id)).ToList();
+            if (rules.Any(rule => rule is null))
+            {
+                database.Rollback();
+                return Failure("One or more selected rules no longer exist. Refresh the list and try again. No rules were changed.");
+            }
+            foreach (var rule in rules)
+            {
+                if (model.ChangeTo) rule.To = string.IsNullOrWhiteSpace(model.To) ? null : model.To.Trim();
+                if (model.ChangeCc) rule.Cc = string.IsNullOrWhiteSpace(model.Cc) ? null : model.Cc.Trim();
+                if (model.ChangeEnabled) rule.Enabled = model.Enabled;
+                if (model.ChangeSmtpProfile) rule.SmtpProfileId = model.SmtpProfileId;
+                if (!_ctx.AlertRules.Update(rule))
+                    throw new InvalidOperationException("A selected rule could not be updated.");
+            }
+            database.Commit();
+            return RedirectToAction(nameof(Index), new { type = model.Type, message = $"Updated {rules.Count} selected alert rule(s)." });
+        }
+        catch
+        {
+            database.Rollback();
+            return Failure("The batch update failed. No rules were changed. Refresh the list and try again.");
+        }
+    }
+
+    private void PopulateTestEntities(AlertRuleTestViewModel model)
+    {
+        try
+        {
+            model.Entities = runner.GetTestEntities(model.Rule.Type);
+        }
+        catch (InvalidOperationException ex)
+        {
+            ModelState.AddModelError(string.Empty, ex.Message);
+        }
     }
 
     private void PopulateLookups(AlertRule model)

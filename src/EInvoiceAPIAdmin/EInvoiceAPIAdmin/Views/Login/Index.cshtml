@@ -18,7 +18,6 @@
         <tr>
             <th>Id</th>
             <th>u_name</th>
-            <th>u_pass</th>
             <th>IsInitial</th>
             <th>Actions</th>
         </tr>
@@ -29,7 +28,6 @@
             <tr>
                 <td>@item.Id</td>
                 <td>@item.u_name</td>
-                <td>@item.u_pass</td>
                 <td>@item.IsInitial</td>
                 <td>
                     <button class="btn btn-warning btn-sm" data-bs-toggle="modal" data-bs-target="#editModal-@item.Id">Edit</button>
@@ -56,7 +54,8 @@
                                 </div>
                                 <div class="mb-3">
                                     <label>Password</label>
-                                    <input class="form-control" name="u_pass" value="@item.u_pass" required />
+                                    <input class="form-control" type="password" name="Password" autocomplete="new-password" minlength="12" maxlength="256" />
+                                    <div class="form-text">Leave blank to keep the existing password.</div>
                                 </div>
                                 <div class="mb-3">
                                     <label>Is Initial</label>
@@ -91,7 +90,7 @@
                     </div>
                     <div class="mb-3">
                         <label>Password</label>
-                        <input class="form-control" name="u_pass" required />
+                        <input class="form-control" type="password" name="Password" autocomplete="new-password" minlength="12" maxlength="256" required />
                     </div>
                     <div class="mb-3">
                         <label>Is Initial</label>
@@ -118,6 +117,7 @@
                 </div>
                 <div class="modal-body">
                     <input type="file" name="jsonFile" accept=".json" required class="form-control" />
+                    <div class="form-text">Each account requires u_name and a new Password (12–256 characters). IDs and security stamps cannot be imported.</div>
                 </div>
                 <div class="modal-footer">
                     <button type="submit" class="btn btn-success">Import</button>
@@ -138,6 +138,7 @@
             </div>
             <div class="modal-body">
                 <a asp-action="Export" class="btn btn-secondary w-100">Download JSON</a>
+                <p class="form-text">Exports contain account metadata only, never passwords or password hashes.</p>
             </div>
         </div>
     </div>

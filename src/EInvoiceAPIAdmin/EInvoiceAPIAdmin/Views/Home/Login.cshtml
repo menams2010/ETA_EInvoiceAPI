@@ -18,7 +18,7 @@
                     </div>
                     <div class="mb-3">
                         <label>Password</label>
-                        <input type="password" asp-for="u_pass" class="form-control" required />
+                        <input type="password" name="u_pass" autocomplete="current-password" maxlength="256" class="form-control" required />
                     </div>
                     <button type="submit" class="btn btn-primary w-100">Login</button>
                 </form>
@@ -26,19 +26,3 @@
         </div>
     </div>
 </div>
-
-@section Scripts {
-    <script>
-        // Delete all cookies for the current domain
-        document.addEventListener('DOMContentLoaded', function () {
-            var cookies = document.cookie.split("; ");
-            for (var i = 0; i < cookies.length; i++) {
-                var cookie = cookies[i];
-                var eqPos = cookie.indexOf("=");
-                var name = eqPos > -1 ? cookie.substr(0, eqPos) : cookie;
-                // Set the cookie expiration date to the past to delete it
-                document.cookie = name + "=;expires=Thu, 01 Jan 1970 00:00:00 GMT;path=/";
-            }
-        });
-    </script>
-}

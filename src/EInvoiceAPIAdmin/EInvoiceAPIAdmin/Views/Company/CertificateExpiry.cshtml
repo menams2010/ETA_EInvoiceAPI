@@ -124,15 +124,17 @@
                                 expiryStyle = `background: ${getGradientColor(diffDays)}`;
                             }
                             const tr = document.createElement('tr');
-                            tr.innerHTML = `
-                                <td>${cert.serialNumber || ''}</td>
-                                <td>${cert.subjectName || ''}</td>
-                                <td>${cert.issuerName || ''}</td>
-                                <td class="cert-date-nowrap">${cert.notBefore ? cert.notBefore.split('T')[0] : ''}</td>
-                                <td class="cert-expiry-gradient cert-date-nowrap" style="${expiryStyle}">${cert.notAfter ? cert.notAfter.split('T')[0] : ''}</td>
-                                <td>${cert.version || ''}</td>
-                                <td>${cert.friendlyName || ''}</td>
-                            `;
+                            [cert.serialNumber, cert.subjectName, cert.issuerName, cert.notBefore?.split('T')[0],
+                                cert.notAfter?.split('T')[0], cert.version, cert.friendlyName].forEach((value, index) => {
+                                const cell = document.createElement('td');
+                                cell.textContent = value ?? '';
+                                if (index === 3 || index === 4) cell.className = 'cert-date-nowrap';
+                                if (index === 4) {
+                                    cell.classList.add('cert-expiry-gradient');
+                                    cell.style.cssText = expiryStyle;
+                                }
+                                tr.appendChild(cell);
+                            });
                             tbody.appendChild(tr);
                         });
                     })
