@@ -103,15 +103,37 @@
                 <i class="bi bi-filetype-sql"></i> Migrate SQLite or Legacy LiteDB
             </div>
             <div class="card-body">
-                <p>Legacy migration runs offline. It snapshots the source, converts its schema, and validates a separate encrypted LiteDB database before switching. The source and current database are not overwritten.</p>
-                <ol>
-                    <li>Stop all application instances and preserve database and Data Protection backups.</li>
-                    <li>Set <code>Database:Migration:Enabled</code> to <code>true</code>, <code>Database:Migration:SourcePath</code> to the legacy file, and <code>Database:Path</code> to a new absolute destination.</li>
-                    <li>Supply the destination key through <code>Database:Password</code>. For encrypted LiteDB, also supply <code>Database:Migration:SourcePassword</code> through secure configuration.</li>
-                    <li>Run the application once and require a successful migration result. No web server or alert service runs in migration mode.</li>
-                    <li>Remove the migration settings and restart using the validated destination and its key.</li>
+                <p>Upload a legacy SQLite or first-version LiteDB file to create a separate validated LiteDB destination. The running database is not modified or replaced by this operation.</p>
+                <form asp-controller="Maintenance" asp-action="ImportFromSqlite" method="post" enctype="multipart/form-data">
+                    @Html.AntiForgeryToken()
+                    <div class="mb-3">
+                        <label class="form-label">Legacy database file</label>
+                        <input type="file" class="form-control" name="legacyFile" accept=".db,.sqlite,.sqlite3" required />
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label">New destination path</label>
+                        <input type="text" class="form-control" name="destinationPath" placeholder="C:\\SecureData\\config.migrated.db" required />
+                        <div class="form-text">Use a new absolute path. Existing files are never overwritten.</div>
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label">New destination password</label>
+                        <input type="password" class="form-control" name="destinationPassword" autocomplete="off" minlength="32" required />
+                        <div class="form-text">Use a random secret with at least 32 characters.</div>
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label">Legacy LiteDB password</label>
+                        <input type="password" class="form-control" name="sourcePassword" autocomplete="off" />
+                        <div class="form-text">Leave blank for SQLite or unencrypted LiteDB. SQLite sources must already be decrypted.</div>
+                    </div>
+                    <button type="submit" class="btn btn-success"><i class="bi bi-arrow-repeat"></i> Migrate Legacy Database</button>
+                </form>
+                <hr />
+                <ol class="mb-0">
+                    <li>Stop other application instances and preserve database and Data Protection backups before switching.</li>
+                    <li>Review the returned destination path and retained source snapshot after migration completes.</li>
+                    <li>Update configuration to use the new destination path and password only after validation succeeds.</li>
+                    <li>Preserve the matching Data Protection key ring before enabling Graph mail from the migrated database.</li>
                 </ol>
-                <p class="mb-0">See <code>docs/security-hardening.md</code> for supported schemas, validation, recovery, and Graph key requirements. Live SQLite import is no longer supported.</p>
             </div>
         </div>
     </div>

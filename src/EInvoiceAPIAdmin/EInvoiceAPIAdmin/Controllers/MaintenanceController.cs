@@ -4,6 +4,7 @@ using LiteDB;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using InvoiceWebApp.Services;
+using System.Security.Cryptography;
 
 namespace InvoiceWebApp.Controllers;
 
@@ -14,7 +15,7 @@ public class MaintenanceController(AppDbContext ctx, LiteDatabase liteDb, IWebHo
     private readonly AppDbContext _ctx = ctx;
     private readonly LiteDatabase _liteDb = liteDb;
     private readonly IWebHostEnvironment _env = env;
-
+    private readonly DatabaseSecurity _databaseSecurity = databaseSecurity;
 
     private static readonly string[] KnownTables = new[]
     {
@@ -153,10 +154,43 @@ public class MaintenanceController(AppDbContext ctx, LiteDatabase liteDb, IWebHo
 
     [HttpPost]
     [ValidateAntiForgeryToken]
-    public IActionResult ImportFromSqlite() => RedirectToAction(nameof(Index), new
+    public IActionResult ImportFromSqlite(IFormFile legacyFile, string destinationPath, string destinationPassword, string? sourcePassword)
     {
-        error = "Live import is disabled. Migrate SQLite or legacy LiteDB offline into a separate validated database using Database:Migration settings. See docs/security-hardening.md."
-    });
+        if (legacyFile == null || legacyFile.Length == 0)
+            return RedirectToAction(nameof(Index), new { error = "Please select a legacy SQLite or LiteDB file." });
+        if (string.IsNullOrWhiteSpace(destinationPath) || !Path.IsPathFullyQualified(destinationPath))
+            return RedirectToAction(nameof(Index), new { error = "Enter a new absolute destination path for the migrated LiteDB database." });
+        if (string.IsNullOrWhiteSpace(destinationPassword) || destinationPassword.Length < 32)
+            return RedirectToAction(nameof(Index), new { error = "Enter a random destination password of at least 32 characters." });
+
+        var uploadDirectory = Path.Combine(_env.ContentRootPath, "App_Data", "migration-uploads");
+        Directory.CreateDirectory(uploadDirectory);
+        var extension = Path.GetExtension(legacyFile.FileName);
+        var sourcePath = Path.Combine(uploadDirectory, Guid.NewGuid().ToString("N") + (string.IsNullOrWhiteSpace(extension) ? ".db" : extension));
+        try
+        {
+            using (var fs = new FileStream(sourcePath, FileMode.CreateNew, FileAccess.Write, FileShare.None))
+            {
+                legacyFile.CopyTo(fs);
+            }
+
+            var result = LegacyDatabaseMigration.Run(sourcePath, destinationPath, destinationPassword,
+                string.IsNullOrWhiteSpace(sourcePassword) ? null : sourcePassword);
+            var counts = string.Join(", ", result.RecordCounts.OrderBy(kvp => kvp.Key).Select(kvp => $"{kvp.Key}: {kvp.Value}"));
+            var message = $"{result.Format} migration completed to {result.DestinationPath}. Source snapshot: {result.BackupPath}. {counts}";
+            if (result.RequiresDataProtectionKeys)
+                message += " Preserve the matching Data Protection key ring and verify Graph connections before enabling mail.";
+            return RedirectToAction(nameof(Index), new { message });
+        }
+        catch (Exception ex)
+        {
+            return RedirectToAction(nameof(Index), new { error = ex.Message });
+        }
+        finally
+        {
+            if (System.IO.File.Exists(sourcePath)) System.IO.File.Delete(sourcePath);
+        }
+    }
 
     // To remove the empty lines in the end of file
     ~MaintenanceController()
