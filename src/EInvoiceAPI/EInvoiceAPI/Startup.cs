@@ -4,7 +4,7 @@ using Microsoft.AspNetCore.Hosting;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
-using Microsoft.OpenApi.Models;
+using Microsoft.OpenApi;
 using System;
 using System.Collections.Generic;
 
@@ -27,10 +27,11 @@ namespace EInvoiceAPI
 
             services.AddDistributedMemoryCache();
 
-            services.Configure<IISServerOptions>(options =>
+            // IIS only exists on Windows; non-Windows runtimes may not include the IIS types at all.
+            if (OperatingSystem.IsWindows())
             {
-                options.AllowSynchronousIO = true;
-            });
+                ConfigureIis(services);
+            }
 
             services.AddSession();
 
@@ -52,6 +53,16 @@ namespace EInvoiceAPI
             services.AddSingleton<CertificateCache>();
             services.AddSingleton<SlackLogger>();
 
+        }
+
+        // Kept in its own non-inlined method so IISServerOptions is only loaded when this runs.
+        [System.Runtime.CompilerServices.MethodImpl(System.Runtime.CompilerServices.MethodImplOptions.NoInlining)]
+        private static void ConfigureIis(IServiceCollection services)
+        {
+            services.Configure<IISServerOptions>(options =>
+            {
+                options.AllowSynchronousIO = true;
+            });
         }
 
         // This method gets called by the runtime. Use this method to configure the HTTP request pipeline.

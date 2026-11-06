@@ -1,0 +1,11 @@
+<Project>
+  <!--
+    Shared settings for every SDK-style project in this repository.
+    Change the target framework here to move the whole solution to a new .NET version.
+  -->
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+  </PropertyGroup>
+</Project>

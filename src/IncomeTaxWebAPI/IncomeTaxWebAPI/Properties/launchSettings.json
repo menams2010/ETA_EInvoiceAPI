@@ -1,0 +1,12 @@
+{
+  "profiles": {
+    "IncomeTaxWebAPI": {
+      "commandName": "Project",
+      "launchBrowser": false,
+      "applicationUrl": "https://localhost:44320;http://localhost:55817",
+      "environmentVariables": {
+        "ASPNETCORE_ENVIRONMENT": "Development"
+      }
+    }
+  }
+}

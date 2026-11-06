@@ -6,37 +6,33 @@ using System.Data.SQLite;
 using System.IO;
 using System.Linq;
 using System.Net;
-using System.Net.Http;
 using System.Text;
-using System.Web.Http;
+using Microsoft.AspNetCore.Mvc;
+using Microsoft.AspNetCore.Mvc.ModelBinding;
 
 namespace IncomeTaxWebAPI.Controllers
 {
-    public class EInvoiceController : ApiController
+    public class EInvoiceController : ControllerBase
     {
         [HttpPut]
         //[Route("api")]
         //[Route("api/ping")]
         [Route("api/einvoice/ping")]
-        public HttpResponseMessage ping([FromBody] object value)
+        public IActionResult ping([FromBody(EmptyBodyBehavior = EmptyBodyBehavior.Allow)] object value)
         {
-            IEnumerable<string> hdrAcceptLanguage;
             //IEnumerable<string> hdrContentType;
-            Request.Headers.TryGetValues("Accept-Language", out hdrAcceptLanguage);
-            string acceptLanguage = hdrAcceptLanguage.FirstOrDefault();
+            string acceptLanguage = Request.Headers.AcceptLanguage.FirstOrDefault();
 
             //Request.Headers.TryGetValues("Content-Type", out hdrContentType);
             //string contentType = hdrContentType.FirstOrDefault();
 
             var vat = VatRegNumber.FromJson(value.ToString());
-            var response = this.Request.CreateResponse(HttpStatusCode.OK);
-            response.Content = new StringContent(vat.ToJson(), Encoding.UTF8, "application/json");
-            return response;
+            return Content(vat.ToJson(), "application/json; charset=utf-8");
         }
 
         [HttpPut]
         [Route("api/einvoice/notifications/documents")]
-        public HttpResponseMessage documents([FromBody] object value)
+        public IActionResult documents([FromBody(EmptyBodyBehavior = EmptyBodyBehavior.Allow)] object value)
         {
             Delivery delivery = null;
             if (value != null)
@@ -78,16 +74,14 @@ namespace IncomeTaxWebAPI.Controllers
             //}
             if (uresponse.StatusCode == HttpStatusCode.OK)
             {
-            var response = this.Request.CreateResponse(HttpStatusCode.OK);
-            response.Content = new StringContent("Received", Encoding.UTF8, "application/json");
-            return response;
+            return Content("Received", "application/json; charset=utf-8");
             }
-            return null;
+            return StatusCode(StatusCodes.Status500InternalServerError); // SAP did not return 200 OK
         }
 
         [HttpPut]
         [Route("api/einvoice/notifications/receipts")]
-        public HttpResponseMessage receipts([FromBody] object value)
+        public IActionResult receipts([FromBody(EmptyBodyBehavior = EmptyBodyBehavior.Allow)] object value)
         {
             Delivery delivery = null;
             if (value != null)
@@ -129,11 +123,9 @@ namespace IncomeTaxWebAPI.Controllers
             //}
             if (uresponse.StatusCode == HttpStatusCode.OK)
             {
-                var response = this.Request.CreateResponse(HttpStatusCode.OK);
-                response.Content = new StringContent("Received", Encoding.UTF8, "application/json");
-                return response;
+                return Content("Received", "application/json; charset=utf-8");
             }
-            return null;
+            return StatusCode(StatusCodes.Status500InternalServerError); // SAP did not return 200 OK
         }
     }
 }

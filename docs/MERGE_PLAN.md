@@ -52,12 +52,37 @@ Goal: one solution where **EInvoiceAPI** (signing and submission API) uses the *
 - **Existing databases are likely to have a conflict.** The old API seeded `Settings`, `EInvoiceEnvs` and `Logins`, while the old Admin wrote `tb_Settings`, `tb_eInvoiceEnv` and `tb_Login`. Admin's migration refuses to start when both an old and a current collection hold data. Rehearse on a copy and reconcile those collections before switching over.
 - Update the Admin runbook's line "The new connection is exclusive" to say the connection is now shared with EInvoiceAPI.
 
-## Phase 3: Follow-ups (not started)
+## Phase 3: One .NET version for everything (done)
+
+All projects target **net10.0** (LTS until November 2028). It's set once in `Directory.Build.props`, and `global.json` pins the .NET 10 SDK. .NET 7 is out of support, and .NET 9 support ends on 10 November 2026.
+
+- **EInvoiceAPI** (net7.0 → net10.0):
+  - Framework packages moved to 10.0.14.
+  - Swashbuckle 6.1.1 → 10.3.1. 6.1.1 had a known vulnerability (GHSA-qrmm-w75w-3wpx); the code change was one `using`.
+  - Removed `System.Runtime` and `System.Security.Principal.Windows`, which are built in now.
+  - The IIS-only `IISServerOptions` setting now applies only on Windows.
+- **EInvoiceAPIAdmin and its tests** (net9.0 → net10.0): `Microsoft.Data.Sqlite` → 10.0.14. No code changes.
+- **IncomeTaxWebAPI** (.NET Framework 4.5.2, ASP.NET Web API 2 → ASP.NET Core on net10.0):
+  - `Global.asax`, `WebApiConfig`, OWIN `Startup` and `Web.config` were replaced by `Program.cs`. `ApiKeyHandler` became `ApiKeyMiddleware`, with the same key and the same 401 body.
+  - Controllers keep their routes and logic. Only the Web API 2 types changed: `ApiController` → `ControllerBase`, `HttpResponseMessage` → `IActionResult`.
+  - An empty body still binds to `null`. A `null` response (SAP didn't answer 200) is now an explicit 500, which is what Web API 2 produced.
+  - A missing `Accept-Language` header no longer throws on `ping` (the value was never used).
+  - Packages: `System.Data.SQLite` → `System.Data.SQLite.Core` 1.0.119. RestSharp stays on 106.15.0, because 107+ changed the API these controllers use.
+  - Removed unused packages: EntityFramework, the SQLite EF6/LINQ/SEE extensions, Eagle/Harpy, Owin and Web API.
+- **Verified on .NET 10:**
+  - `dotnet build ETA_EInvoiceAPI.sln` succeeds, and all package vulnerability warnings are gone.
+  - The Admin regression suites pass (3/3), and the two-process shared-database smoke test passes (13/13).
+  - EInvoiceAPI starts, rejects a short password, and serves Swagger with 10 paths.
+  - IncomeTaxWebAPI was run and exercised with HTTP requests. API-key 401s, `ping` on all three controllers, a 404 for unknown routes, notifications saved to SQLite, and the 500 when SAP is unreachable all matched the old behaviour.
+- **Not verified:** running under IIS on Windows, calls to the real SAP servers, and the USB signing token.
+
+## Phase 4: Follow-ups (not started)
 
 - [ ] Remove the Slack webhook URL committed in `src/EInvoiceAPI/EInvoiceAPI/appsettings.json` and rotate it.
-- [ ] Decide whether to move EInvoiceAPI to net9.0. net7.0 is out of support, and `System.Security.Permissions` 9.0.5 already warns about it.
 - [ ] Align `Pkcs11Interop` (5.1.2 in the API vs 5.3.0 in Admin).
 - [ ] Optionally extract the shared collection names and models into a small library both apps reference.
 - [ ] Remove the stray root-level `Program.cs` files under `src/EInvoiceAPI` (empty) and `src/EInvoiceAPIAdmin` (old copy). Neither is compiled.
-- [ ] CI on `windows-latest` to build the whole solution, including IncomeTaxWebAPI, and run the Admin regression suites.
-- [ ] Decide whether IncomeTaxWebAPI should share anything.
+- [ ] CI on `windows-latest` to build the solution and run the Admin regression suites.
+- [ ] IncomeTaxWebAPI: move hard-coded secrets (API key, SAP Basic-auth header) and the `C:\EInvoice\` folder into configuration.
+- [ ] IncomeTaxWebAPI: move RestSharp to 112.x, the same as EInvoiceAPI. This needs small code changes.
+- [ ] Optionally fix the existing `SYSLIB0014` and `SYSLIB0057` obsolete-API warnings in EInvoiceAPI (`ServicePointManager`, `X509Certificate2` constructor).
