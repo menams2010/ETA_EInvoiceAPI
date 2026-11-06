@@ -22,6 +22,9 @@ namespace EInvoiceAPI
         // This method gets called by the runtime. Use this method to add services to the container.
         public void ConfigureServices(IServiceCollection services)
         {
+            // Shared config.db with EInvoiceAPIAdmin: same Database:Path and Database:Password settings.
+            TokenManager.Configure(Configuration);
+
             services.AddDistributedMemoryCache();
 
             services.Configure<IISServerOptions>(options =>

@@ -19,7 +19,10 @@ public sealed class DatabaseSecurity
             throw new InvalidOperationException("Configure Database:Password with a random secret of at least 32 characters. See docs/security-hardening.md.");
     }
 
-    public LiteDatabase Open() => OpenFile(Path, _password);
+    // The live database is opened in shared mode because EInvoiceAPI reads and writes the same
+    // config.db (tokens, companies, settings) while this app is running. Offline operations
+    // below (backup copy, key rotation, legacy migration) keep exclusive Direct access.
+    public LiteDatabase Open() => OpenFile(Path, _password, connection: ConnectionType.Shared);
 
     public LegacyDatabaseMigration.Result MigrateLegacy(IConfiguration configuration)
     {
@@ -67,11 +70,12 @@ public sealed class DatabaseSecurity
         }
     }
 
-    private static LiteDatabase OpenFile(string path, string password, bool readOnly = false) => new(new ConnectionString
+    private static LiteDatabase OpenFile(string path, string password, bool readOnly = false,
+        ConnectionType connection = ConnectionType.Direct) => new(new ConnectionString
     {
         Filename = path,
         Password = password,
-        Connection = ConnectionType.Direct,
+        Connection = connection,
         ReadOnly = readOnly
     });
 

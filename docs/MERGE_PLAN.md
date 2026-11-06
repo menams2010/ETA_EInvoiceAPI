@@ -1,0 +1,63 @@
+# ETA_EInvoiceAPI merge plan
+
+Goal: one solution where **EInvoiceAPI** (signing and submission API) uses the **EInvoiceAPIAdmin** configuration database (`config.db`, LiteDB), with the Admin app (`Development` branch) as the owner of that database's schema. **IncomeTaxWebAPI** joins the solution unchanged.
+
+## Phase 1: Repository merge (done)
+
+- [x] Import with full history under `src/<Name>/`: IncomeTaxWebAPI (`master`), EInvoiceAPI (`master`), EInvoiceAPIAdmin (`Development`)
+- [x] Root `ETA_EInvoiceAPI.sln` containing all three apps plus the Admin regression-test projects (in a `tests` solution folder)
+- [x] Single root `.gitignore` and `.gitattributes` (all copies were identical)
+
+## Phase 2: EInvoiceAPI uses the Admin config database (done)
+
+### Starting point
+
+| | EInvoiceAPI (`master`) | EInvoiceAPIAdmin (`Development`) |
+|---|---|---|
+| Collections | `Settings`, `Companies`, `CompEnvs`, `EInvoiceEnvs`, `Logins` | Same names (migrates old `tb_*` names into them) |
+| Expiry field | `ClientSecretExpirationDate` (`DateOnly`, which LiteDB can't store) | `ClientSecretExpiryDate` (`DateTime`) |
+| Password | Hard-coded in source | `Database:Password` from secure config, at least 32 characters |
+| Path | `<api bin>/config.db` | `Database:Path`, else `<admin bin>/../config.db` |
+| Connection | Shared | **Direct (exclusive)**, held open for the app's lifetime |
+| Schema/seeding | Seeded settings, environments and a plain-text login | Owns schema, seeding, migrations and hashed accounts |
+| LiteDB | 5.0.21 | 5.0.17 |
+
+### Changes made
+
+1. **EInvoiceAPI `TokenManager`:**
+   - Reads `Database:Path` and `Database:Password`, the same keys as Admin. Startup fails with a clear message if the password is missing or shorter than 32 characters.
+   - Opens `config.db` in **shared** mode, and no longer creates the file. A missing file is an error that points to `Database:Path`.
+   - **No more schema creation or seeding.** In particular, it no longer inserts the hard-coded plain-text login. Admin owns the schema.
+   - Reads the expiry from `ClientSecretExpiryDate` and still returns it as the `DateOnly` column `ClientSecretExpirationDate`, so `TokenHelper`'s "client secret expired" check now actually works with dates entered in Admin.
+   - `SaveToken` updates only `str_token` and `time_get` on the stored document, so fields Admin adds to `CompEnv` are never wiped.
+   - Public methods and `DataTable` shapes are unchanged, so `Invoice.cs`, `TokenHelper` and `CertificateCache` are untouched.
+2. **EInvoiceAPI `Startup`:** calls `TokenManager.Configure(Configuration)`.
+3. **EInvoiceAPIAdmin `DatabaseSecurity.Open()`:** the live connection is now **shared** instead of exclusive, so the API can use the file while Admin runs. Offline operations (backup copy, key rotation, legacy migration) still use exclusive access.
+4. **LiteDB 5.0.17 in both apps.** Both apps must run the same engine version on the shared file. 5.0.21 breaks Admin's key rotation (`Rebuild` fails with "Invalid password"; caught by `Security.Regression`), so the API moved down rather than Admin up.
+
+### Verification
+
+- `dotnet build` succeeds for EInvoiceAPI, EInvoiceAPIAdmin and all three test projects.
+- Admin regression suites pass with the changes: `DatabaseMigration.Regression`, `Security.Regression`, `GraphMail.Regression`.
+- **Two-process smoke test:** a process standing in for Admin uses the real `DatabaseSecurity`, `AppDbContext` and account bootstrap, holds the file open and writes continuously. At the same time a second process runs EInvoiceAPI's real `TokenManager`. 13 of 13 checks pass:
+  - Company, environment and expiry data entered in Admin is read by the API.
+  - Tokens and `CertCacheLastRefresh` written by the API are visible to Admin.
+  - Fields only Admin knows about survive the API's `SaveToken`.
+- Not verified: IncomeTaxWebAPI (it needs Windows/MSBuild), and the HTTP endpoints of either app against a real ETA environment or a USB signing token.
+
+### Deployment notes
+
+- Set **the same** `Database__Path` (absolute) and `Database__Password` for both app pools or services, using secure configuration and not `appsettings.json`.
+- Existing production `config.db` files must first go through Admin's offline migration or key-rotation runbook (`src/EInvoiceAPIAdmin/docs/security-hardening.md`).
+- **Existing databases are likely to have a conflict.** The old API seeded `Settings`, `EInvoiceEnvs` and `Logins`, while the old Admin wrote `tb_Settings`, `tb_eInvoiceEnv` and `tb_Login`. Admin's migration refuses to start when both an old and a current collection hold data. Rehearse on a copy and reconcile those collections before switching over.
+- Update the Admin runbook's line "The new connection is exclusive" to say the connection is now shared with EInvoiceAPI.
+
+## Phase 3: Follow-ups (not started)
+
+- [ ] Remove the Slack webhook URL committed in `src/EInvoiceAPI/EInvoiceAPI/appsettings.json` and rotate it.
+- [ ] Decide whether to move EInvoiceAPI to net9.0. net7.0 is out of support, and `System.Security.Permissions` 9.0.5 already warns about it.
+- [ ] Align `Pkcs11Interop` (5.1.2 in the API vs 5.3.0 in Admin).
+- [ ] Optionally extract the shared collection names and models into a small library both apps reference.
+- [ ] Remove the stray root-level `Program.cs` files under `src/EInvoiceAPI` (empty) and `src/EInvoiceAPIAdmin` (old copy). Neither is compiled.
+- [ ] CI on `windows-latest` to build the whole solution, including IncomeTaxWebAPI, and run the Admin regression suites.
+- [ ] Decide whether IncomeTaxWebAPI should share anything.
