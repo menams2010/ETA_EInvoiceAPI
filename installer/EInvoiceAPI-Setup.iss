@@ -772,7 +772,6 @@ begin
   DbConfirmEdit := NewPasswordEdit(DbPage, ScaleY(228));
   DbPasswordEdit.Text := Param('DBPASSWORD', '');
   DbConfirmEdit.Text := DbPasswordEdit.Text;
-  if DbPasswordEdit.Text <> '' then DbEnterRadio.Checked := True else DbGenerateRadio.Checked := True;
   DbChangeCheck := TNewCheckBox.Create(DbPage);
   DbChangeCheck.Parent := DbPage.Surface;
   DbChangeCheck.Caption := 'Change the database password';
@@ -785,6 +784,8 @@ begin
   DbNewEdit.Text := Param('NEWDBPASSWORD', '');
   DbNewConfirmEdit.Text := DbNewEdit.Text;
   DbChangeCheck.Checked := DbNewEdit.Text <> '';
+  // Last: ticking a radio button runs DbRadioClick, which uses every control above.
+  if DbPasswordEdit.Text <> '' then DbEnterRadio.Checked := True else DbGenerateRadio.Checked := True;
 
   { 5. First Admin account (new database only) }
   AdminPage := CreateInputQueryPage(DbPage.ID, 'Admin account', 'First account for the Admin site',
