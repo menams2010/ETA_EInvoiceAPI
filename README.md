@@ -57,7 +57,13 @@ Both are Release, framework-dependent builds. They write to `publish\<x64|x86>\<
 
 ## Hosting on IIS
 
-All three apps are ASP.NET Core apps. Each server needs the **ASP.NET Core 10.0 Hosting Bundle**, which installs both the 32-bit and 64-bit runtimes. Each app pool should use **No Managed Code**. Publishing generates the `web.config` for in-process hosting.
+| URL | App |
+|---|---|
+| `http(s)://<host>/EInvoiceAPI` | EInvoiceAPI |
+| `http(s)://<host>/EInvoiceAPI/Admin` | EInvoiceAPIAdmin |
+| `http(s)://<host>/EInvoiceAPI/ETANotifications` | IncomeTaxWebAPI |
+
+[`deploy/Setup-IIS.ps1`](deploy/Setup-IIS.ps1) creates this layout: app pools, nested applications, environment variables and folder permissions. See [docs/IIS_DEPLOYMENT.md](docs/IIS_DEPLOYMENT.md) for the server map, the deployment steps, and the ETA portal and Microsoft mail addresses that change with these URLs. Each server needs the **ASP.NET Core 10.0 Hosting Bundle**.
 
 ## Shared configuration database
 

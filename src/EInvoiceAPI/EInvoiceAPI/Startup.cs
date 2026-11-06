@@ -68,6 +68,11 @@ namespace EInvoiceAPI
         // This method gets called by the runtime. Use this method to configure the HTTP request pipeline.
         public void Configure(IApplicationBuilder app, IWebHostEnvironment env)
         {
+            // Under IIS the application path (/EInvoiceAPI) is applied automatically. ASPNETCORE_PATHBASE
+            // reproduces it when running outside IIS (Kestrel / Visual Studio) so URLs match production.
+            var pathBase = Configuration["PathBase"];
+            if (!string.IsNullOrEmpty(pathBase)) app.UsePathBase(pathBase);
+
             if (env.IsDevelopment())
             {
                 app.UseDeveloperExceptionPage();

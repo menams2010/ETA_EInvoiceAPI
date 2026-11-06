@@ -13,10 +13,11 @@
       "commandName": "Project",
       "dotnetRunMessages": true,
       "launchBrowser": true,
-      "launchUrl": "swagger/index.html",
+      "launchUrl": "EInvoiceAPI/swagger/index.html",
       "applicationUrl": "http://localhost:5042",
       "environmentVariables": {
-        "ASPNETCORE_ENVIRONMENT": "Development"
+        "ASPNETCORE_ENVIRONMENT": "Development",
+        "ASPNETCORE_PATHBASE": "/EInvoiceAPI"
       }
     },
     "IIS Express": {

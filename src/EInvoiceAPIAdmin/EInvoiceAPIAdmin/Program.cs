@@ -99,7 +99,9 @@ var authentication = builder.Services.AddAuthentication(CookieAuthenticationDefa
     {
         options.LoginPath = "/Home/Login";
         options.LogoutPath = "/Home/Logout";
-        options.Cookie.Name = "__Host-InvoiceAdmin";
+        // "__Secure-" (HTTPS-only) rather than "__Host-": browsers reject __Host- cookies unless Path=/,
+        // and the app is hosted under a sub-path (/EInvoiceAPI/Admin), which becomes the cookie's Path.
+        options.Cookie.Name = "__Secure-InvoiceAdmin";
         options.Cookie.SecurePolicy = CookieSecurePolicy.Always;
         options.Cookie.HttpOnly = true;
         options.Cookie.SameSite = SameSiteMode.Lax;
@@ -148,19 +150,24 @@ var authentication = builder.Services.AddAuthentication(CookieAuthenticationDefa
         {
             // Keep the local login cookie; this flow only connects a mail account.
             context.HandleResponse();
-            context.Response.Redirect("/SmtpProfiles/Index?message=Microsoft%20mailbox%20connected.");
+            context.Response.Redirect($"{context.Request.PathBase}/SmtpProfiles/Index?message=Microsoft%20mailbox%20connected.");
             return Task.CompletedTask;
         };
         options.Events.OnRemoteFailure = context =>
         {
             context.HandleResponse();
-            context.Response.Redirect("/SmtpProfiles/Index?error=Microsoft%20connection%20failed.%20Check%20app%20registration%2C%20consent%2C%20and%20local%20login%2C%20then%20reconnect.");
+            context.Response.Redirect($"{context.Request.PathBase}/SmtpProfiles/Index?error=Microsoft%20connection%20failed.%20Check%20app%20registration%2C%20consent%2C%20and%20local%20login%2C%20then%20reconnect.");
             return Task.CompletedTask;
         };
     });
 
 var app = builder.Build();
 DatabaseSecurity.InitializeAccounts(app.Services.GetRequiredService<LiteDatabase>(), builder.Configuration);
+
+// Under IIS the application path (/EInvoiceAPI/Admin) is applied automatically. ASPNETCORE_PATHBASE
+// reproduces it when running outside IIS (Kestrel / Visual Studio) so URLs match production.
+var pathBase = app.Configuration["PathBase"];
+if (!string.IsNullOrEmpty(pathBase)) app.UsePathBase(pathBase);
 
 if (!app.Environment.IsDevelopment())
 {
