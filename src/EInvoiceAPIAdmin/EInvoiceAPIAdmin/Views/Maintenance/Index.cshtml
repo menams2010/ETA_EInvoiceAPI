@@ -1,0 +1,206 @@
+@{
+    ViewData["Title"] = "Maintenance";
+}
+<div class="row g-4">
+    <div class="col-12 col-lg-6">
+        <div class="card border-primary">
+            <div class="card-header bg-primary text-white">
+                <i class="bi bi-download"></i> Backup Database
+            </div>
+            <div class="card-body">
+                <p>Download a backup of the current LiteDB database.</p>
+                <form asp-controller="Maintenance" asp-action="Backup" method="post">
+                    @Html.AntiForgeryToken()
+                    <button type="submit" class="btn btn-primary"><i class="bi bi-cloud-download"></i> Backup</button>
+                </form>
+            </div>
+        </div>
+    </div>
+    <div class="col-12 col-lg-6">
+        <div class="card border-warning">
+            <div class="card-header bg-warning">
+                <i class="bi bi-upload"></i> Restore Database
+            </div>
+            <div class="card-body">
+                <p>Restore selected current-schema collections from a LiteDB backup. This replaces the selected current data; it is not a legacy schema migration or a full-file restore.</p>
+                <form id="restoreForm" asp-controller="Maintenance" asp-action="Restore" method="post" enctype="multipart/form-data">
+                    @Html.AntiForgeryToken()
+                    <div class="mb-3">
+                        <input type="file" class="form-control" name="backupFile" accept=".db" required />
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label">Backup password (only if different from the current database key)</label>
+                        <input type="password" class="form-control" name="backupPassword" autocomplete="off" />
+                        <div class="form-text">Restoring accounts invalidates their existing sessions.</div>
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label">Tables to restore</label>
+                        <div class="form-check">
+                            <input class="form-check-input table-select-all" type="checkbox" id="restoreSelectAll" checked>
+                            <label class="form-check-label" for="restoreSelectAll">All listed tables</label>
+                        </div>
+                        <div class="row row-cols-1 row-cols-sm-2 g-2 ms-2 mt-1">
+                            <div class="col">
+                                <div class="form-check">
+                                    <input class="form-check-input table-option-restore" type="checkbox" value="EInvoiceEnvs" id="restore_EInvoiceEnvs">
+                                    <label class="form-check-label" for="restore_EInvoiceEnvs">E-Invoice Environments</label>
+                                </div>
+                            </div>
+                            <div class="col">
+                                <div class="form-check">
+                                    <input class="form-check-input table-option-restore" type="checkbox" value="Settings" id="restore_Settings">
+                                    <label class="form-check-label" for="restore_Settings">Settings</label>
+                                </div>
+                            </div>
+                            <div class="col">
+                                <div class="form-check">
+                                    <input class="form-check-input table-option-restore" type="checkbox" value="Companies" id="restore_Companies">
+                                    <label class="form-check-label" for="restore_Companies">Companies</label>
+                                </div>
+                            </div>
+                            <div class="col">
+                                <div class="form-check">
+                                    <input class="form-check-input table-option-restore" type="checkbox" value="CompEnvs" id="restore_CompEnvs">
+                                    <label class="form-check-label" for="restore_CompEnvs">Company Environments</label>
+                                </div>
+                            </div>
+                            <div class="col">
+                                <div class="form-check">
+                                    <input class="form-check-input table-option-restore" type="checkbox" value="Logins" id="restore_Logins">
+                                    <label class="form-check-label" for="restore_Logins">Logins</label>
+                                </div>
+                            </div>
+                            <div class="col">
+                                <div class="form-check">
+                                    <input class="form-check-input table-option-restore" type="checkbox" value="AlertRules" id="restore_AlertRules">
+                                    <label class="form-check-label" for="restore_AlertRules">Alert Rules</label>
+                                </div>
+                            </div>
+                            <div class="col">
+                                <div class="form-check">
+                                    <input class="form-check-input table-option-restore" type="checkbox" value="SmtpProfiles" id="restore_SmtpProfiles">
+                                    <label class="form-check-label" for="restore_SmtpProfiles">SMTP Profiles</label>
+                                </div>
+                            </div>
+                            <div class="col">
+                                <div class="form-check">
+                                    <input class="form-check-input table-option-restore" type="checkbox" value="EmailTemplates" id="restore_EmailTemplates">
+                                    <label class="form-check-label" for="restore_EmailTemplates">Email Templates</label>
+                                </div>
+                            </div>
+                        </div>
+                        <input type="hidden" name="tables" id="restoreTables" />
+                        <div class="form-text">Only the listed tables are restored. Graph credentials and audit/send logs are not included in this operation. Use the offline procedure for legacy databases.</div>
+                    </div>
+                    <button type="submit" class="btn btn-danger"><i class="bi bi-cloud-upload"></i> Restore</button>
+                </form>
+            </div>
+        </div>
+    </div>
+    <div class="col-12">
+        <div class="card border-success">
+            <div class="card-header bg-success text-white">
+                <i class="bi bi-filetype-sql"></i> Migrate SQLite or Legacy LiteDB
+            </div>
+            <div class="card-body">
+                <p>Upload a legacy SQLite or first-version LiteDB file to create a separate validated LiteDB destination. The running database is not modified or replaced by this operation.</p>
+                <form asp-controller="Maintenance" asp-action="ImportFromSqlite" method="post" enctype="multipart/form-data">
+                    @Html.AntiForgeryToken()
+                    <div class="mb-3">
+                        <label class="form-label">Legacy database file</label>
+                        <input type="file" class="form-control" name="legacyFile" accept=".db,.sqlite,.sqlite3" required />
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label">New destination path</label>
+                        <input type="text" class="form-control" name="destinationPath" placeholder="C:\\SecureData\\config.migrated.db" required />
+                        <div class="form-text">Use a new absolute path. Existing files are never overwritten.</div>
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label">New destination password</label>
+                        <input type="password" class="form-control" name="destinationPassword" autocomplete="off" minlength="32" required />
+                        <div class="form-text">Use a random secret with at least 32 characters.</div>
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label">Legacy LiteDB password</label>
+                        <input type="password" class="form-control" name="sourcePassword" autocomplete="off" />
+                        <div class="form-text">Leave blank for SQLite or unencrypted LiteDB. SQLite sources must already be decrypted.</div>
+                    </div>
+                    <button type="submit" class="btn btn-success"><i class="bi bi-arrow-repeat"></i> Migrate Legacy Database</button>
+                </form>
+                <hr />
+                <ol class="mb-0">
+                    <li>Stop other application instances and preserve database and Data Protection backups before switching.</li>
+                    <li>Review the returned destination path and retained source snapshot after migration completes.</li>
+                    <li>Update configuration to use the new destination path and password only after validation succeeds.</li>
+                    <li>Preserve the matching Data Protection key ring before enabling Graph mail from the migrated database.</li>
+                </ol>
+            </div>
+        </div>
+    </div>
+</div>
+
+@if (ViewBag.Error != null)
+{
+    <div class="alert alert-danger mt-4">@ViewBag.Error</div>
+}
+@if (ViewBag.Message != null)
+{
+    <div class="alert alert-success mt-4">@ViewBag.Message</div>
+}
+
+@section Scripts {
+<script>
+    // Ensure the DOM exists before binding (section is rendered in <head> in layout)
+    document.addEventListener('DOMContentLoaded', function() {
+        function bindTableSelection(formId, selectAllId, optionClass, hiddenId) {
+            const form = document.getElementById(formId);
+            const selectAll = document.getElementById(selectAllId);
+            const opts = Array.from(document.getElementsByClassName(optionClass));
+            const hidden = document.getElementById(hiddenId);
+
+            // Guard if elements are not found
+            if (!form || !selectAll || !hidden || opts.length === 0) return;
+
+            function syncState() {
+                const anyOptionChecked = opts.some(cb => cb.checked);
+                if (selectAll.checked) {
+                    // All tables selected -> disable specific options
+                    opts.forEach(cb => { cb.checked = false; cb.disabled = true; });
+                    selectAll.disabled = false; // keep All enabled
+                } else {
+                    // Specific selection mode -> enable options
+                    opts.forEach(cb => { cb.disabled = false; });
+                    // Do not disable the All option anymore; keep it enabled so user can switch back
+                    selectAll.disabled = false;
+                }
+
+                // Hidden field
+                hidden.value = selectAll.checked ? '' : opts.filter(cb => cb.checked).map(cb => cb.value).join(',');
+            }
+
+            selectAll.addEventListener('change', function () {
+                // If user selects All, clear any specific selections
+                if (selectAll.checked) {
+                    opts.forEach(cb => { cb.checked = false; });
+                }
+                syncState();
+            });
+
+            opts.forEach(cb => cb.addEventListener('change', function() {
+                // If user selects a specific table, simply uncheck All (but do not disable it)
+                if (this.checked) selectAll.checked = false;
+                syncState();
+            }));
+
+            form.addEventListener('submit', function() {
+                syncState();
+            });
+
+            // initial state
+            syncState();
+        }
+
+        bindTableSelection('restoreForm', 'restoreSelectAll', 'table-option-restore', 'restoreTables');
+    });
+</script>
+}

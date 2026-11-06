@@ -1,0 +1,342 @@
+﻿@model List<InvoiceWebApp.Models.CompEnv>
+@{
+    ViewData["Title"] = "Company Environments";
+    var companies = ViewBag.Companies as List<InvoiceWebApp.Models.Company>;
+    var envs = ViewBag.Envs as List<InvoiceWebApp.Models.EInvoiceEnv>;
+}
+<style>
+    .compenv-table {
+        table-layout: fixed;
+        width: 100%;
+        word-break: break-word;
+    }
+
+        .compenv-table th, .compenv-table td {
+            white-space: normal;
+            overflow-wrap: break-word;
+            word-break: break-all;
+            vertical-align: middle;
+        }
+
+            .compenv-table th:nth-child(1), .compenv-table td:nth-child(1) {
+                width: 45px;
+            }
+
+            .compenv-table th:nth-child(2), .compenv-table td:nth-child(2) {
+                width: 180px;
+            }
+
+            .compenv-table th:nth-child(3), .compenv-table td:nth-child(3) {
+                width: 90px;
+            }
+
+            .compenv-table th:nth-child(4), .compenv-table td:nth-child(4) {
+                width: 110px;
+            }
+
+            .compenv-table th:nth-child(5), .compenv-table td:nth-child(5) {
+                width: 140px;
+            }
+
+            .compenv-table th:nth-child(6), .compenv-table td:nth-child(6) {
+                width: 110px;
+            }
+
+            .compenv-table th:nth-child(7), .compenv-table td:nth-child(7) {
+                width: 200px;
+            }
+
+            .compenv-table th:nth-child(8), .compenv-table td:nth-child(8) {
+                width: 110px;
+            }
+
+            .compenv-table th:nth-child(9), .compenv-table td:nth-child(9) {
+                width: 110px;
+            }
+</style>
+
+<h2>Company Environments</h2>
+
+<div class="mb-2 d-flex" style="max-width:350px;">
+    <input id="compEnvSearchBox" type="text" class="form-control me-2" placeholder="Search environments..." />
+</div>
+
+<div class="mb-2">
+    <button class="btn btn-primary" data-bs-toggle="modal" data-bs-target="#addModal">Add</button>
+    <button class="btn btn-secondary" data-bs-toggle="modal" data-bs-target="#importModal">Import</button>
+    <button class="btn btn-success" data-bs-toggle="modal" data-bs-target="#exportModal">Export</button>
+</div>
+
+<table class="table table-bordered table-hover compenv-table" id="compEnvTable">
+    <thead>
+        <tr>
+            <th>Id</th>
+            <th>Company</th>
+            <th>Env</th>
+            <th>ClientId</th>
+            <th>ClientSecret</th>
+            <th>Client/Secret Expiry</th>
+            <th>str_token</th>
+            <th>time_get</th>
+            <th>Actions</th>
+        </tr>
+    </thead>
+    <tbody>
+        @foreach (var item in Model)
+        {
+            var company = companies?.FirstOrDefault(c => c.Id == item.CompanyId);
+            var env = envs?.FirstOrDefault(e => e.Id == item.EnvId);
+            <tr>
+                <td>@item.Id</td>
+                <td>
+                    @if (company != null)
+                    {
+                        @($"{company.CompanyCode} - {company.CompanyName}")
+                    }
+                </td>
+                <td>
+                    @if (env != null)
+                    {
+                        @env.EnvName
+                    }
+                </td>
+                <td>@item.ClientId</td>
+                <td>@item.ClientSecret</td>
+                <td>@(item.ClientSecretExpiryDate?.ToString("yyyy-MM-dd") ?? "")</td>
+                <td>
+                    <textarea class="form-control" name="str_token" style="min-height: 80px; max-height: 200px; overflow:auto; resize:vertical;" readonly>@item.str_token</textarea>
+                </td>
+                <td>@item.time_get</td>
+                <td>
+                    <button class="btn btn-warning btn-sm" data-bs-toggle="modal" data-bs-target="#editModal-@item.Id">Edit</button>
+                    <button class="btn btn-info btn-sm" data-bs-toggle="modal" data-bs-target="#cloneModal-@item.Id">Clone</button>
+                    <form asp-action="Delete" method="post" class="d-inline">
+                        <input type="hidden" name="id" value="@item.Id" />
+                        <button type="submit" class="btn btn-danger btn-sm" onclick="return confirm('Are you sure you want to delete this CompEnv?')">Delete</button>
+                    </form>
+                </td>
+            </tr>
+            <!-- Edit Modal for this row -->
+            <div class="modal fade" id="editModal-@item.Id" tabindex="-1" aria-labelledby="editModalLabel-@item.Id" aria-hidden="true">
+                <div class="modal-dialog modal-dialog-centered">
+                    <div class="modal-content">
+                        <form asp-action="Edit" method="post">
+                            <div class="modal-header">
+                                <h5 class="modal-title" id="editModalLabel-@item.Id">Edit CompEnv</h5>
+                                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+                            </div>
+                            <div class="modal-body">
+                                <input type="hidden" name="Id" value="@item.Id" />
+                                <div class="mb-3">
+                                    <label class="form-label">Company</label>
+                                    <select class="form-select" name="CompanyId" required>
+                                        <option value="">-- Select Company --</option>
+                                        @foreach (var comp in companies ?? new List<InvoiceWebApp.Models.Company>())
+                                        {
+                                            <option value="@comp.Id" selected="@(comp.Id == item.CompanyId)">
+                                                @comp.CompanyCode - @comp.CompanyName
+                                            </option>
+                                        }
+                                    </select>
+                                </div>
+                                <div class="mb-3">
+                                    <label class="form-label">Env</label>
+                                    <select class="form-select" name="EnvId" required>
+                                        <option value="">-- Select Env --</option>
+                                        @foreach (var e in envs ?? new List<InvoiceWebApp.Models.EInvoiceEnv>())
+                                        {
+                                            <option value="@e.Id" selected="@(e.Id == item.EnvId)">
+                                                @e.EnvName
+                                            </option>
+                                        }
+                                    </select>
+                                </div>
+                                <div class="mb-3">
+                                    <label class="form-label">ClientId</label>
+                                    <input class="form-control" name="ClientId" value="@item.ClientId" />
+                                </div>
+                                <div class="mb-3">
+                                    <label class="form-label">ClientSecret</label>
+                                    <input class="form-control" name="ClientSecret" value="@item.ClientSecret" />
+                                </div>
+                                <div class="mb-3">
+                                    <label class="form-label">Client/Secret Expiry Date</label>
+                                    <input class="form-control" type="date" name="ClientSecretExpiryDate" value="@(item.ClientSecretExpiryDate?.ToString("yyyy-MM-dd") ?? "")" />
+                                </div>
+                                <div class="mb-3">
+                                    <label class="form-label">str_token</label>
+                                    <textarea class="form-control" name="str_token" style="min-height: 80px; max-height: 200px; overflow:auto; resize:vertical;">@item.str_token</textarea>
+                                </div>
+                                <div class="mb-3">
+                                    <label class="form-label">time_get</label>
+                                    <input class="form-control" name="time_get" value="@item.time_get" />
+                                </div>
+                            </div>
+                            <div class="modal-footer">
+                                <button type="submit" class="btn btn-warning">Save</button>
+                                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
+                            </div>
+                        </form>
+                    </div>
+                </div>
+            </div>
+            <!-- Clone Modal for this row -->
+            <div class="modal fade" id="cloneModal-@item.Id" tabindex="-1" aria-labelledby="cloneModalLabel-@item.Id" aria-hidden="true">
+                <div class="modal-dialog modal-dialog-centered">
+                    <div class="modal-content">
+                        <form asp-action="Clone" method="post">
+                            <div class="modal-header">
+                                <h5 class="modal-title" id="cloneModalLabel-@item.Id">Clone CompEnv to Another Company</h5>
+                                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+                            </div>
+                            <div class="modal-body">
+                                <input type="hidden" name="id" value="@item.Id" />
+                                <div class="alert alert-info">
+                                    <strong>Source:</strong> @(company != null ? $"{company.CompanyCode} - {company.CompanyName}" : item.CompanyId.ToString()) / @(env?.EnvName ?? item.EnvId.ToString())
+                                </div>
+                                <div class="mb-3">
+                                    <label class="form-label">Target Company</label>
+                                    <select class="form-select" name="targetCompanyId" required>
+                                        <option value="">-- Select Target Company --</option>
+                                        @foreach (var comp in companies ?? new List<InvoiceWebApp.Models.Company>())
+                                        {
+                                            @if (comp.Id != item.CompanyId)
+                                            {
+                                                <option value="@comp.Id">
+                                                    @comp.CompanyCode - @comp.CompanyName
+                                                </option>
+                                            }
+                                        }
+                                    </select>
+                                </div>
+                                <div class="form-text">
+                                    This will copy ClientId, ClientSecret, and Expiry Date to the selected company for the same environment.
+                                </div>
+                            </div>
+                            <div class="modal-footer">
+                                <button type="submit" class="btn btn-info">Clone</button>
+                                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
+                            </div>
+                        </form>
+                    </div>
+                </div>
+            </div>
+        }
+    </tbody>
+</table>
+
+<!-- Add Modal -->
+<div class="modal fade" id="addModal" tabindex="-1" aria-labelledby="addModalLabel" aria-hidden="true">
+    <div class="modal-dialog modal-dialog-centered">
+        <div class="modal-content">
+            <form asp-action="Create" method="post">
+                <div class="modal-header">
+                    <h5 class="modal-title" id="addModalLabel">Add CompEnv</h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+                </div>
+                <div class="modal-body">
+                    <div class="mb-3">
+                        <label class="form-label">Company</label>
+                        <select class="form-select" name="CompanyId" required>
+                            <option value="">-- Select Company --</option>
+                            @foreach (var company in companies ?? new List<InvoiceWebApp.Models.Company>())
+                            {
+                                <option value="@company.Id">
+                                    @company.CompanyCode - @company.CompanyName
+                                </option>
+                            }
+                        </select>
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label">Env</label>
+                        <select class="form-select" name="EnvId" required>
+                            <option value="">-- Select Env --</option>
+                            @foreach (var env in envs ?? new List<InvoiceWebApp.Models.EInvoiceEnv>())
+                            {
+                                <option value="@env.Id">@env.EnvName</option>
+                            }
+                        </select>
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label">ClientId</label>
+                        <input class="form-control" name="ClientId" />
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label">ClientSecret</label>
+                        <input class="form-control" name="ClientSecret" />
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label">Client/Secret Expiry Date</label>
+                        <input class="form-control" type="date" name="ClientSecretExpiryDate" />
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label">str_token</label>
+                        <textarea class="form-control" name="str_token" style="min-height: 80px; max-height: 200px; overflow:auto; resize:vertical;"></textarea>
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label">time_get</label>
+                        <input class="form-control" name="time_get" />
+                    </div>
+                </div>
+                <div class="modal-footer">
+                    <button type="submit" class="btn btn-primary">Add</button>
+                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
+                </div>
+            </form>
+        </div>
+    </div>
+</div>
+
+<!-- Import Modal -->
+<div class="modal fade" id="importModal" tabindex="-1" aria-labelledby="importModalLabel" aria-hidden="true">
+    <div class="modal-dialog modal-dialog-centered">
+        <div class="modal-content">
+            <form asp-action="Import" method="post" enctype="multipart/form-data">
+                <div class="modal-header">
+                    <h5 class="modal-title" id="importModalLabel">Import CompEnv (JSON)</h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+                </div>
+                <div class="modal-body">
+                    <input type="file" name="jsonFile" accept=".json" required class="form-control" />
+                </div>
+                <div class="modal-footer">
+                    <button type="submit" class="btn btn-success">Import</button>
+                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
+                </div>
+            </form>
+        </div>
+    </div>
+</div>
+
+<!-- Export Modal -->
+<div class="modal fade" id="exportModal" tabindex="-1" aria-labelledby="exportModalLabel" aria-hidden="true">
+    <div class="modal-dialog modal-dialog-centered">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title" id="exportModalLabel">Export CompEnv</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body">
+                <a asp-action="Export" class="btn btn-secondary w-100">Download JSON</a>
+            </div>
+        </div>
+    </div>
+</div>
+
+@section Scripts {
+<script>
+document.addEventListener('DOMContentLoaded', function () {
+    const searchBox = document.getElementById('compEnvSearchBox');
+    const table = document.getElementById('compEnvTable');
+    if (!searchBox || !table) return;
+    searchBox.addEventListener('input', function () {
+        const filter = searchBox.value.toLowerCase();
+        const rows = table.querySelectorAll('tbody tr');
+        rows.forEach(row => {
+            const text = row.textContent.toLowerCase();
+            row.style.display = text.includes(filter) ? '' : 'none';
+        });
+    });
+});
+</script>
+}

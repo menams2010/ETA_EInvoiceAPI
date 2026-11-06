@@ -1,0 +1,163 @@
+﻿@model List<InvoiceWebApp.Models.Login>
+@{
+    ViewData["Title"] = "Login Users";
+}
+<h2>Login Users</h2>
+
+<div class="mb-2 d-flex" style="max-width:350px;">
+    <input id="loginSearchBox" type="text" class="form-control me-2" placeholder="Search users..." />
+</div>
+
+<div class="mb-2">
+    <button class="btn btn-primary" data-bs-toggle="modal" data-bs-target="#addModal">Add</button>
+    <button class="btn btn-secondary" data-bs-toggle="modal" data-bs-target="#importModal">Import</button>
+    <button class="btn btn-success" data-bs-toggle="modal" data-bs-target="#exportModal">Export</button>
+</div>
+<table class="table table-bordered table-hover" id="loginTable">
+    <thead>
+        <tr>
+            <th>Id</th>
+            <th>u_name</th>
+            <th>IsInitial</th>
+            <th>Actions</th>
+        </tr>
+    </thead>
+    <tbody>
+        @foreach (var item in Model)
+        {
+            <tr>
+                <td>@item.Id</td>
+                <td>@item.u_name</td>
+                <td>@item.IsInitial</td>
+                <td>
+                    <button class="btn btn-warning btn-sm" data-bs-toggle="modal" data-bs-target="#editModal-@item.Id">Edit</button>
+                    <form asp-action="Delete" method="post" class="d-inline">
+                        <input type="hidden" name="id" value="@item.Id" />
+                        <button type="submit" class="btn btn-danger btn-sm" onclick="return confirm('Are you sure you want to delete this user?')">Delete</button>
+                    </form>
+                </td>
+            </tr>
+            <!-- Edit Modal -->
+            <div class="modal fade" id="editModal-@item.Id" tabindex="-1">
+                <div class="modal-dialog modal-dialog-centered">
+                    <div class="modal-content">
+                        <form asp-action="Edit" method="post">
+                            <div class="modal-header">
+                                <h5 class="modal-title">Edit Login User</h5>
+                                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+                            </div>
+                            <div class="modal-body">
+                                <input type="hidden" name="Id" value="@item.Id" />
+                                <div class="mb-3">
+                                    <label>User Name</label>
+                                    <input class="form-control" name="u_name" value="@item.u_name" required />
+                                </div>
+                                <div class="mb-3">
+                                    <label>Password</label>
+                                    <input class="form-control" type="password" name="Password" autocomplete="new-password" minlength="12" maxlength="256" />
+                                    <div class="form-text">Leave blank to keep the existing password.</div>
+                                </div>
+                                <div class="mb-3">
+                                    <label>Is Initial</label>
+                                    <input class="form-check-input" name="IsInitial" type="checkbox" value="true" @(item.IsInitial ? "checked" : "") />
+                                </div>
+                            </div>
+                            <div class="modal-footer">
+                                <button type="submit" class="btn btn-warning">Save</button>
+                                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
+                            </div>
+                        </form>
+                    </div>
+                </div>
+            </div>
+        }
+    </tbody>
+</table>
+
+<!-- Add Modal -->
+<div class="modal fade" id="addModal" tabindex="-1">
+    <div class="modal-dialog modal-dialog-centered">
+        <div class="modal-content">
+            <form asp-action="Create" method="post">
+                <div class="modal-header">
+                    <h5 class="modal-title">Add Login User</h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+                </div>
+                <div class="modal-body">
+                    <div class="mb-3">
+                        <label>User Name</label>
+                        <input class="form-control" name="u_name" required />
+                    </div>
+                    <div class="mb-3">
+                        <label>Password</label>
+                        <input class="form-control" type="password" name="Password" autocomplete="new-password" minlength="12" maxlength="256" required />
+                    </div>
+                    <div class="mb-3">
+                        <label>Is Initial</label>
+                        <input class="form-check-input" name="IsInitial" type="checkbox" value="true" />
+                    </div>
+                </div>
+                <div class="modal-footer">
+                    <button type="submit" class="btn btn-primary">Add</button>
+                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
+                </div>
+            </form>
+        </div>
+    </div>
+</div>
+
+<!-- Import Modal -->
+<div class="modal fade" id="importModal" tabindex="-1">
+    <div class="modal-dialog modal-dialog-centered">
+        <div class="modal-content">
+            <form asp-action="Import" method="post" enctype="multipart/form-data">
+                <div class="modal-header">
+                    <h5 class="modal-title">Import Login Users (JSON)</h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+                </div>
+                <div class="modal-body">
+                    <input type="file" name="jsonFile" accept=".json" required class="form-control" />
+                    <div class="form-text">Each account requires u_name and a new Password (12–256 characters). IDs and security stamps cannot be imported.</div>
+                </div>
+                <div class="modal-footer">
+                    <button type="submit" class="btn btn-success">Import</button>
+                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
+                </div>
+            </form>
+        </div>
+    </div>
+</div>
+
+<!-- Export Modal -->
+<div class="modal fade" id="exportModal" tabindex="-1">
+    <div class="modal-dialog modal-dialog-centered">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title">Export Login Users</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body">
+                <a asp-action="Export" class="btn btn-secondary w-100">Download JSON</a>
+                <p class="form-text">Exports contain account metadata only, never passwords or password hashes.</p>
+            </div>
+        </div>
+    </div>
+</div>
+
+@section Scripts {
+<script>
+document.addEventListener('DOMContentLoaded', function () {
+    const searchBox = document.getElementById('loginSearchBox');
+    const table = document.getElementById('loginTable');
+    if (!searchBox || !table) return;
+    searchBox.addEventListener('input', function () {
+        const filter = searchBox.value.toLowerCase();
+        const rows = table.querySelectorAll('tbody tr');
+        rows.forEach(row => {
+            const text = row.textContent.toLowerCase();
+            row.style.display = text.includes(filter) ? '' : 'none';
+        });
+    });
+});
+</script>
+}

@@ -1,0 +1,83 @@
+@model InvoiceWebApp.Models.SmtpProfile
+@{
+    ViewData["Title"] = "Create SMTP Profile";
+}
+
+<h3>Create SMTP Profile</h3>
+
+<div class="alert alert-info">
+    System.Net.Mail supports None (unencrypted) and STARTTLS only, not implicit SSL/TLS (typically port 465).
+    Select Microsoft Graph for OAuth2 with Microsoft 365 or personal Outlook.com, including MFA.
+    Create the profile, then edit it to enter its Microsoft application ID and client secret and connect your mailbox. SMTP fields below are ignored for Graph; Graph sends as the connected account.
+    MFA and password authentication availability depend on the provider's policy; an app password does not bypass disabled password authentication.
+</div>
+
+<form asp-action="Create" method="post" class="mt-3">
+    @Html.AntiForgeryToken()
+    <div asp-validation-summary="All" class="text-danger"></div>
+
+    <div class="row g-3">
+        <div class="col-12">
+            <label class="form-label" asp-for="DeliveryProvider">Delivery Provider</label>
+            <select class="form-select" asp-for="DeliveryProvider">
+                <option value="Smtp">SMTP (System.Net.Mail)</option>
+                <option value="MicrosoftGraph">Microsoft Graph (OAuth2)</option>
+            </select>
+            <span asp-validation-for="DeliveryProvider" class="text-danger"></span>
+        </div>
+        <div class="col-12 col-md-6">
+            <label class="form-label" asp-for="Name"></label>
+            <input class="form-control" asp-for="Name" />
+        </div>
+        <div class="col-12 col-md-6 d-flex align-items-end">
+            <div class="form-check">
+                <input class="form-check-input" asp-for="IsDefault" />
+                <label class="form-check-label" asp-for="IsDefault"></label>
+            </div>
+        </div>
+
+        <div class="col-12 col-md-6">
+            <label class="form-label" asp-for="Host">Host (SMTP only)</label>
+            <input class="form-control" asp-for="Host" />
+        </div>
+        <div class="col-12 col-md-3">
+            <label class="form-label" asp-for="Port"></label>
+            <input class="form-control" asp-for="Port" />
+        </div>
+        <div class="col-12 col-md-3">
+            <label class="form-label" asp-for="EncryptionMethod">Encryption Method</label>
+            <select class="form-select" asp-for="EncryptionMethod">
+                <option value="None">None</option>
+                <option value="StartTls">STARTTLS</option>
+                @if (Model.GetEncryptionValidationError() is not null)
+                {
+                    <option value="@Model.EncryptionMethod">@Model.EncryptionMethod (unsupported; select None or STARTTLS)</option>
+                }
+            </select>
+            <span asp-validation-for="EncryptionMethod" class="text-danger"></span>
+        </div>
+
+        <div class="col-12 col-md-6">
+            <label class="form-label" asp-for="Username">Username (SMTP only)</label>
+            <input class="form-control" asp-for="Username" />
+        </div>
+        <div class="col-12 col-md-6">
+            <label class="form-label" asp-for="Password">Password (SMTP only)</label>
+            <input class="form-control" asp-for="Password" />
+        </div>
+
+        <div class="col-12 col-md-6">
+            <label class="form-label" asp-for="FromEmail">From Email (SMTP only)</label>
+            <input class="form-control" asp-for="FromEmail" />
+        </div>
+        <div class="col-12 col-md-6">
+            <label class="form-label" asp-for="FromName">From Name (SMTP only)</label>
+            <input class="form-control" asp-for="FromName" />
+        </div>
+
+        <div class="col-12">
+            <button type="submit" class="btn btn-primary">Create</button>
+            <a class="btn btn-secondary" asp-action="Index">Cancel</a>
+        </div>
+    </div>
+</form>

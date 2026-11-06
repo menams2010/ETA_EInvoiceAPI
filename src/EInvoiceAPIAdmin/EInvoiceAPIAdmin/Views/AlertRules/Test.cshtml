@@ -1,0 +1,62 @@
+@model InvoiceWebApp.Models.AlertRuleTestViewModel
+@{
+    ViewData["Title"] = "Test Alert Rule";
+}
+
+<h3>Test Alert Rule: @Model.Rule.Name</h3>
+<div class="alert alert-warning">
+    This sends one real email to the saved rule's To/CC recipients, even if the rule is disabled or not due.
+    The subject starts with [TEST]. Tests do not change scheduled alerts or their send history.
+    Changes on the Edit page must be saved before testing.
+</div>
+<dl class="row">
+    <dt class="col-sm-3">Type</dt><dd class="col-sm-9">@Model.Rule.Type</dd>
+    <dt class="col-sm-3">To</dt><dd class="col-sm-9">@(string.IsNullOrWhiteSpace(Model.Rule.To) ? "(none)" : Model.Rule.To)</dd>
+    <dt class="col-sm-3">CC</dt><dd class="col-sm-9">@(string.IsNullOrWhiteSpace(Model.Rule.Cc) ? "(none)" : Model.Rule.Cc)</dd>
+    <dt class="col-sm-3">Mail profile ID</dt><dd class="col-sm-9">@(Model.Rule.SmtpProfileId?.ToString() ?? "Default / first available")</dd>
+    <dt class="col-sm-3">Template ID</dt><dd class="col-sm-9">@(Model.Rule.EmailTemplateId?.ToString() ?? "First available")</dd>
+</dl>
+<form asp-action="Test" method="post" id="testAlertForm">
+    @Html.AntiForgeryToken()
+    <input type="hidden" asp-for="Id" />
+    <div asp-validation-summary="All" class="text-danger"></div>
+    <div class="mb-3">
+        <label class="form-label" asp-for="DataSource">Test data</label>
+        <select class="form-select" asp-for="DataSource">
+            <option value="Sample">Sample expiration data</option>
+            <option value="Real">One selected real record</option>
+        </select>
+        <div class="form-text">Sample data uses the rule's days-before-expiration value. Real data uses the record's actual expiration date, regardless of the schedule.</div>
+    </div>
+    <div class="mb-3">
+        <label class="form-label" asp-for="EntityKey">Real record (used only when selected above)</label>
+        <select class="form-select" asp-for="EntityKey">
+            <option value="">Select a record</option>
+            @foreach (var entity in Model.Entities)
+            {
+                <option value="@entity.Key">@entity.DisplayName — @entity.ExpirationDate.ToString("yyyy-MM-dd") (@entity.Key)</option>
+            }
+        </select>
+        @if (Model.Entities.Count == 0)
+        {
+            <div class="form-text">No real records with expiration dates are available. You can still send a sample test.</div>
+        }
+        @if (Model.Rule.Type == InvoiceWebApp.Models.AlertType.CertificateExpiration)
+        {
+            <div class="form-text">Certificates are read from the application's current-user Personal certificate store, as for scheduled alerts.</div>
+        }
+    </div>
+    <div class="form-check mb-3">
+        <input class="form-check-input" asp-for="ConfirmSend" />
+        <label class="form-check-label" asp-for="ConfirmSend">Send one test email to the To/CC recipients shown above.</label>
+    </div>
+    <button type="submit" class="btn btn-info" id="sendTestAlert">Send test alert</button>
+    <a class="btn btn-secondary" asp-action="Index" asp-route-type="@Model.Rule.Type">Cancel</a>
+</form>
+<script>
+    document.getElementById('testAlertForm').addEventListener('submit', function () {
+        const button = document.getElementById('sendTestAlert');
+        button.disabled = true;
+        button.textContent = 'Sending...';
+    });
+</script>

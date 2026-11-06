@@ -1,0 +1,28 @@
+﻿@model InvoiceWebApp.Models.LoginViewModel
+
+<div class="row justify-content-center">
+    <div class="col-md-4">
+        <div class="card mt-5">
+            <div class="card-header text-center bg-primary text-white">
+                <h3>Login</h3>
+            </div>
+            <div class="card-body">
+                @if (!string.IsNullOrEmpty(Model.ErrorMessage))
+                {
+                    <div class="alert alert-danger">@Model.ErrorMessage</div>
+                }
+                <form asp-action="Login" method="post">
+                    <div class="mb-3">
+                        <label>Username</label>
+                        <input type="text" asp-for="u_name" class="form-control" required />
+                    </div>
+                    <div class="mb-3">
+                        <label>Password</label>
+                        <input type="password" name="u_pass" autocomplete="current-password" maxlength="256" class="form-control" required />
+                    </div>
+                    <button type="submit" class="btn btn-primary w-100">Login</button>
+                </form>
+            </div>
+        </div>
+    </div>
+</div>

@@ -1,0 +1,192 @@
+﻿@{
+    var activePage = Context.Request.Path.Value?.ToLower() ?? "";
+    bool isLogin = activePage.Contains("/login");
+    
+    var currentController = (ViewContext.RouteData.Values["controller"]?.ToString() ?? "").ToLower();
+    var currentAction = (ViewContext.RouteData.Values["action"]?.ToString() ?? "").ToLower();
+    isLogin = currentAction == "login";
+}
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="utf-8" />
+    <title>@ViewData["Title"] - InvoiceWebApp</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <link href="https://cdn.jsdelivr.net/npm/bootswatch@5.3.3/dist/cosmo/bootstrap.min.css" rel="stylesheet">
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.3/font/bootstrap-icons.css" rel="stylesheet">
+    <style>
+.navbar.fixed-top {
+    z-index: 1050;
+}
+.sidebar {
+    min-width: 60px;
+    width: 60px;
+    max-width: 220px;
+    transition: width 0.2s;
+    background: #2d3e50;
+    color: #fff;
+    overflow-x: hidden;
+    height: calc(100vh - 56px); /* subtract navbar height */
+    margin-top: 0;
+    position: fixed;
+    top: 56px; /* place under navbar */
+    left: 0;
+    bottom: 0;
+    z-index: 1000;
+}
+.sidebar:hover, .sidebar:focus-within {
+    width: 220px;
+}
+.sidebar .nav-link span,
+.sidebar h4 span {
+    opacity: 0;
+    transition: opacity 0.15s;
+    margin-left: 8px;
+    white-space: nowrap;
+}
+.sidebar:hover .nav-link span,
+.sidebar:focus-within .nav-link span,
+.sidebar:hover h4 span,
+.sidebar:focus-within h4 span {
+    opacity: 1;
+}
+.sidebar .nav-link {
+    display: flex;
+    align-items: center;
+    color: #fff;
+    padding: 10px 12px;
+    font-size: 1rem;
+}
+.sidebar .nav-link.active, .sidebar .nav-link:hover {
+    background: #274064;
+    color: #fff;
+}
+.main-content {
+    padding-left: 0;
+    min-height: 100vh;
+    margin-top: 56px; /* height of navbar */
+    max-width: 100vw;
+    width: 100vw;
+    overflow-x: hidden;
+    box-sizing: border-box;
+}
+@@media (min-width: 768px) {
+    .main-content {
+        padding-left: 60px;
+        transition: padding-left 0.2s;
+    }
+    .sidebar {
+        display: block;
+    }
+}
+@@media (max-width: 767.98px) {
+    .sidebar {
+        display: none;
+    }
+}
+body {
+    min-height: 100vh;
+}
+@* Hide scrollbars on login page *@
+@if (isLogin) {
+    @:html, body { overflow: hidden !important; }
+    @::-webkit-scrollbar { display: none; }
+}
+ </style>
+@RenderSection("css", required: false)
+@RenderSection("Scripts", required: false)
+</head>
+<body>
+    @if (!isLogin)
+    {
+        <nav class="navbar navbar-expand-lg navbar-dark bg-primary fixed-top">
+            <div class="container-fluid">
+                <a class="navbar-brand" href="/">InvoiceWebApp</a>
+                <div class="d-flex ms-auto">
+                    @if (User.Identity != null && User.Identity.IsAuthenticated)
+                    {
+                        <span class="navbar-text me-3">
+                            Welcome, @User.Identity.Name
+                        </span>
+                        <form asp-controller="Home" asp-action="Logout" method="post">
+                            <button type="submit" class="btn btn-outline-light">Logout</button>
+                        </form>
+                    }
+                </div>
+            </div>
+        </nav>
+
+        <nav class="sidebar d-none d-md-block">
+            <div class="p-3">
+@*                 <h4 class="mb-4" style="white-space:nowrap;">
+                    <i class="bi bi-app"></i> <span>InvoiceWebApp</span>
+                </h4> *@
+                <ul class="nav flex-column">
+                    <li class="nav-item">
+                        <a class="nav-link @((currentController == "company" && currentAction == "index") ? "active" : "" )" asp-controller="Company" asp-action="Index">
+                            <i class="bi bi-building"></i> <span>Companies</span>
+                        </a>
+                    </li>
+                    <li class="nav-item">
+                        <a class="nav-link @((currentController == "company" && currentAction == "certificateexpiry") ? "active" : "")" asp-controller="Company" asp-action="CertificateExpiry">
+                            <i class="bi bi-shield-exclamation"></i> <span>Certificate Expiry</span>
+                        </a>
+                    </li>
+                    <li class="nav-item">
+                        <a class="nav-link @((currentController == "compenv" && currentAction == "index") ? "active" : "")" asp-controller="CompEnv" asp-action="Index">
+                            <i class="bi bi-link-45deg"></i> <span>Company Environments</span>
+                        </a>
+                    </li>
+                    <li class="nav-item">
+                        <a class="nav-link @((currentController == "einvoiceenv" && currentAction == "index") ? "active" : "")" asp-controller="EInvoiceEnv" asp-action="Index">
+                            <i class="bi bi-file-earmark-text"></i> <span>E-Invoice Environments</span>
+                        </a>
+                    </li>
+                    <li class="nav-item">
+                        <a class="nav-link @((currentController == "settings" && currentAction == "index") ? "active" : "")" asp-controller="Settings" asp-action="Index">
+                            <i class="bi bi-gear"></i> <span>Settings</span>
+                        </a>
+                    </li>
+                    <li class="nav-item">
+                        <a class="nav-link @((currentController == "alertrules" && currentAction == "index") ? "active" : "")" asp-controller="AlertRules" asp-action="Index">
+                            <i class="bi bi-bell"></i> <span>Alert Rules</span>
+                        </a>
+                    </li>
+                    <li class="nav-item">
+                        <a class="nav-link @((currentController == "smtpprofiles" && currentAction == "index") ? "active" : "")" asp-controller="SmtpProfiles" asp-action="Index">
+                            <i class="bi bi-envelope"></i> <span>SMTP Profiles</span>
+                        </a>
+                    </li>
+                    <li class="nav-item">
+                        <a class="nav-link @((currentController == "emailtemplates" && currentAction == "index") ? "active" : "")" asp-controller="EmailTemplates" asp-action="Index">
+                            <i class="bi bi-file-earmark-text"></i> <span>Email Templates</span>
+                        </a>
+                    </li>
+                    <li class="nav-item">
+                        <a class="nav-link @((currentController == "login" && currentAction == "index") ? "active" : "")" asp-controller="Login" asp-action="Index">
+                            <i class="bi bi-person"></i> <span>Login Users</span>
+                        </a>
+                    </li>
+                    <li class="nav-item">
+                        <a class="nav-link @((currentController == "auditlog" && currentAction == "index") ? "active" : "")" asp-controller="AuditLog" asp-action="Index">
+                            <i class="bi bi-journal-text"></i> <span>Audit Log</span>
+                        </a>
+                    </li>
+                    <li class="nav-item">
+                        <a class="nav-link @((currentController == "maintenance" && currentAction == "index") ? "active" : "")" asp-controller="Maintenance" asp-action="Index">
+                            <i class="bi bi-hdd-network"></i> <span>Maintenance</span>
+                        </a>
+                    </li>
+                </ul>
+            </div>
+        </nav>
+    }
+    <main class="main-content flex-fill @(isLogin ? "w-100" : "")">
+        <div class="container-fluid py-4">
+            @RenderBody()
+        </div>
+    </main>
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"></script>
+    <script src="~/js/security-ui.js" asp-append-version="true"></script>
+</body>
+</html>
