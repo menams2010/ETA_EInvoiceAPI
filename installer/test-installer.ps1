@@ -21,6 +21,11 @@ $failures = [System.Collections.Generic.List[string]]::new()
 function Check([bool] $ok, [string] $what) {
     if ($ok) { Write-Host "PASS  $what" -ForegroundColor Green } else { Write-Host "FAIL  $what" -ForegroundColor Red; $failures.Add($what) }
 }
+# Runs a group of checks; an unexpected error fails that group but the remaining phases still run.
+function Invoke-Phase([string] $name, [scriptblock] $block) {
+    try { & $block }
+    catch { Check $false "$name threw: $($_.Exception.Message -replace '\s+', ' ' | ForEach-Object { $_.Substring(0, [Math]::Min(300, $_.Length)) })" }
+}
 function Invoke-Setup([string] $name, [string[]] $arguments) {
     $log = Join-Path $LogDir "$name.log"
     $p = Start-Process -FilePath $Setup -ArgumentList (@('/VERYSILENT', '/SUPPRESSMSGBOXES', '/NORESTART', "/LOG=`"$log`"") + $arguments) -Wait -PassThru
@@ -115,7 +120,7 @@ try {
         $sap = Invoke-WebRequest -Uri "$admin/SapEndpoints/Index" -SkipCertificateCheck -WebSession $session
         Check ($sap.Content -match 'localhost:7099' -and $sap.Content -match 'ci\.sap') "$label SAP Endpoints page shows the setup values"
     }
-    Test-AdminLogin 'fresh install:'
+    Invoke-Phase 'fresh install: Admin' { Test-AdminLogin 'fresh install:' }
 
     $r = Get-Url 'http://localhost/EInvoiceAPI/Admin'
     Check ($r.StatusCode -in 301, 302, 307, 308 -and "$($r.Headers.Location)" -like 'https://*') "Admin redirects http to https ($($r.StatusCode))"
@@ -128,7 +133,7 @@ try {
     Check ($r.StatusCode -eq 200) "ETANotifications works after upgrade ($($r.StatusCode))"
     $r = Get-Url "$api/swagger/v1/swagger.json"
     Check ($r.StatusCode -eq 200) "EInvoiceAPI works after upgrade ($($r.StatusCode))"
-    Test-AdminLogin 'after upgrade:'
+    Invoke-Phase 'after upgrade: Admin' { Test-AdminLogin 'after upgrade:' }
 
     # === 3. uninstall =====================================================================================
     $uninstaller = 'C:\inetpub\EInvoiceAPI\unins000.exe'

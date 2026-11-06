@@ -54,3 +54,6 @@ jobs:
             Write-Host "===== $($_.Name) ====="
             Get-Content $_.FullName | Where-Object { $_ -notmatch '(Dest filename|Time stamp|Installing the file|Successfully installed the file|Dest file exists|Skipping due to)' }
           }
+          Write-Host "===== Application event log (ASP.NET Core Module, .NET Runtime) ====="
+          Get-WinEvent -FilterHashtable @{ LogName = 'Application'; ProviderName = 'IIS AspNetCore Module V2', '.NET Runtime', 'Application Error' } -MaxEvents 20 -ErrorAction SilentlyContinue |
+            ForEach-Object { Write-Host "--- $($_.TimeCreated) $($_.ProviderName) $($_.Id)"; Write-Host $_.Message }
