@@ -143,6 +143,11 @@ body {
                         </a>
                     </li>
                     <li class="nav-item">
+                        <a class="nav-link @((currentController == "sapendpoints" && currentAction == "index") ? "active" : "")" asp-controller="SapEndpoints" asp-action="Index">
+                            <i class="bi bi-diagram-3"></i> <span>SAP Endpoints</span>
+                        </a>
+                    </li>
+                    <li class="nav-item">
                         <a class="nav-link @((currentController == "settings" && currentAction == "index") ? "active" : "")" asp-controller="Settings" asp-action="Index">
                             <i class="bi bi-gear"></i> <span>Settings</span>
                         </a>

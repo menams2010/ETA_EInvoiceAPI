@@ -83,6 +83,7 @@ All projects target **net10.0** (LTS until November 2028). It's set once in `Dir
 - [ ] Optionally extract the shared collection names and models into a small library both apps reference.
 - [ ] Remove the stray root-level `Program.cs` files under `src/EInvoiceAPI` (empty) and `src/EInvoiceAPIAdmin` (old copy). Neither is compiled.
 - [ ] CI on `windows-latest` to build the solution and run the Admin regression suites.
-- [ ] IncomeTaxWebAPI: move hard-coded secrets (API key, SAP Basic-auth header) and the `C:\EInvoice\` folder into configuration.
+- [x] IncomeTaxWebAPI: the SAP URLs, Basic-auth credentials and timeout moved to Admin > SAP Endpoints, stored in `config.db`. The old credentials are still in git history, so change the SAP service user's password.
+- [ ] IncomeTaxWebAPI: move the remaining hard-coded secrets (the ETA API key) and the `C:\EInvoice\` folder into configuration.
 - [ ] IncomeTaxWebAPI: move RestSharp to 112.x, the same as EInvoiceAPI. This needs small code changes.
 - [ ] Optionally fix the existing `SYSLIB0014` and `SYSLIB0057` obsolete-API warnings in EInvoiceAPI (`ServicePointManager`, `X509Certificate2` constructor).

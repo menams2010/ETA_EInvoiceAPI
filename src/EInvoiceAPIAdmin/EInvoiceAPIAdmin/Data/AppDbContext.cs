@@ -23,6 +23,7 @@ namespace InvoiceWebApp.Data
         public ILiteCollection<EmailTemplate> EmailTemplates => _db.GetCollection<EmailTemplate>("EmailTemplates");
         public ILiteCollection<AlertSendLog> AlertSendLogs => _db.GetCollection<AlertSendLog>("AlertSendLogs");
         public ILiteCollection<AuditLog> AuditLogs => _db.GetCollection<AuditLog>("AuditLogs");
+        public ILiteCollection<SapEndpoint> SapEndpoints => _db.GetCollection<SapEndpoint>("SapEndpoints");
 
         public AppDbContext(string databasePath)
         {
@@ -97,6 +98,7 @@ namespace InvoiceWebApp.Data
             Companies.EnsureIndex(x => x.Id, true);
             CompEnvs.EnsureIndex(x => x.Id, true);
             EInvoiceEnvs.EnsureIndex(x => x.Id, true);
+            SapEndpoints.EnsureIndex(x => x.Name, true);
             Settings.EnsureIndex(x => x.Id, true);
             Logins.EnsureIndex(x => x.Id, true);
 
@@ -117,6 +119,12 @@ namespace InvoiceWebApp.Data
 
             MigrateLegacyAlertsConfigFromSettings();
 
+            if (SapEndpoints.Count() == 0)
+            {
+                // URLs previously hard-coded in IncomeTaxWebAPI. Credentials are entered in Admin > SAP Endpoints.
+                SapEndpoints.Insert(new SapEndpoint { Id = 1, Name = SapEndpoint.Prod, Url = "https://vhfrgprdai01.sap.i.fresh.com.eg:44300/zeinvoice?sap-client=300", TimeoutMs = 3000 });
+                SapEndpoints.Insert(new SapEndpoint { Id = 2, Name = SapEndpoint.Dev, Url = "https://vhfrgdevci.sap.i.fresh.com.eg:44300/zeinvoice?sap-client=300", TimeoutMs = 3000 });
+            }
             if (EInvoiceEnvs.Count() == 0)
             {
                 EInvoiceEnvs.Insert(new EInvoiceEnv { Id = 1, EnvName = "PreProd", EnvTokenUrl = "https://id.preprod.eta.gov.eg/connect/token", EnvInvoicingUrl = "https://api.preprod.invoicing.eta.gov.eg/api/v1/" });

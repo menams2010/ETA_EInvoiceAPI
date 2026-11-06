@@ -15,8 +15,9 @@
     No Managed Code. With -Arch x86 the pools run 32-bit, which the USB token driver
     (eps2003csp11.dll) needs.
 
-    EInvoiceAPI and Admin share config.db: the script sets Database__Path and Database__Password
-    on both pools and gives both pool identities Modify rights on the data folder.
+    All three apps use config.db (ETANotifications reads its SAP endpoints from it): the script sets
+    Database__Path and Database__Password on every pool and gives each pool identity Modify rights
+    on the data folder.
 
     Safe to re-run: existing pools/applications are updated, not duplicated.
     Prerequisite: ASP.NET Core 10.0 Hosting Bundle installed.
@@ -43,7 +44,7 @@ param(
     # Folder IncomeTaxWebAPI writes its SQLite logs to (hard-coded in DBManager.cs).
     [string] $NotificationsDataFolder = 'C:\EInvoice',
 
-    # Same value for EInvoiceAPI and Admin; at least 32 characters. Prompted for if omitted.
+    # Same value for all three apps; at least 32 characters. Prompted for if omitted.
     [securestring] $DatabasePassword
 )
 
@@ -53,7 +54,7 @@ Import-Module WebAdministration
 if (-not (Test-Path "IIS:\Sites\$SiteName")) { throw "IIS site '$SiteName' not found." }
 
 if (-not $DatabasePassword) {
-    $DatabasePassword = Read-Host -AsSecureString 'Database password for config.db (same for API and Admin, 32+ characters)'
+    $DatabasePassword = Read-Host -AsSecureString 'Database password for config.db (same for all three apps, 32+ characters)'
 }
 $plainPassword = [System.Net.NetworkCredential]::new('', $DatabasePassword).Password
 if ($plainPassword.Length -lt 32) { throw 'The database password must be at least 32 characters.' }
@@ -61,7 +62,7 @@ if ($plainPassword.Length -lt 32) { throw 'The database password must be at leas
 $apps = @(
     @{ Pool = 'EInvoiceAPI';                  Folder = 'EInvoiceAPI';      Parent = $SiteName;                 Name = 'EInvoiceAPI';      Url = '/EInvoiceAPI';                  UsesConfigDb = $true  }
     @{ Pool = 'EInvoiceAPI-Admin';            Folder = 'Admin';            Parent = "$SiteName\EInvoiceAPI";   Name = 'Admin';            Url = '/EInvoiceAPI/Admin';            UsesConfigDb = $true  }
-    @{ Pool = 'EInvoiceAPI-ETANotifications'; Folder = 'ETANotifications'; Parent = "$SiteName\EInvoiceAPI";  Name = 'ETANotifications'; Url = '/EInvoiceAPI/ETANotifications'; UsesConfigDb = $false }
+    @{ Pool = 'EInvoiceAPI-ETANotifications'; Folder = 'ETANotifications'; Parent = "$SiteName\EInvoiceAPI";  Name = 'ETANotifications'; Url = '/EInvoiceAPI/ETANotifications'; UsesConfigDb = $true  }
 )
 
 function Set-PoolEnvironmentVariable([string] $pool, [string] $name, [string] $value) {
@@ -97,8 +98,8 @@ foreach ($app in $apps) {
         Set-PoolEnvironmentVariable $app.Pool 'Database__Password' $plainPassword
         Grant-Modify $dataFolder $app.Pool
     }
-    else {
-        Grant-Modify $NotificationsDataFolder $app.Pool
+    if ($app.Name -eq 'ETANotifications') {
+        Grant-Modify $NotificationsDataFolder $app.Pool   # SQLite notification logs
     }
 
     # Application (create, or point an existing one at the right folder and pool)
@@ -122,5 +123,6 @@ Write-Host "  1. Copy publish\$Arch\EInvoiceAPI, publish\$Arch\EInvoiceAPIAdmin 
 Write-Host "     into $WebRoot\EInvoiceAPI, $WebRoot\Admin and $WebRoot\ETANotifications (see docs\IIS_DEPLOYMENT.md)."
 Write-Host '  2. First install with an empty database only: set Bootstrap__Username / Bootstrap__Password on the'
 Write-Host '     EInvoiceAPI-Admin pool, start it once, then remove them.'
-Write-Host '  3. Update the notification URL registered in the ETA portal and, if Microsoft mail is used, the'
+Write-Host '  3. In Admin > SAP Endpoints, enter the SAP username and password for Prod (and Dev).'
+Write-Host '  4. Update the notification URL registered in the ETA portal and, if Microsoft mail is used, the'
 Write-Host '     redirect URI in the Entra app registration (see docs\IIS_DEPLOYMENT.md).'

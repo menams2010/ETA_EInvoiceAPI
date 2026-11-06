@@ -1,0 +1,59 @@
+@model List<InvoiceWebApp.Models.SapEndpoint>
+@{
+    ViewData["Title"] = "SAP Endpoints";
+}
+
+<h3>SAP Endpoints</h3>
+<p class="text-muted">
+    ETANotifications forwards every ETA notification it receives to SAP.
+    <strong>Prod</strong> is used by <code>/EInvoiceAPI/ETANotifications/api/einvoice/...</code> and
+    <strong>Dev</strong> by <code>.../api/einvoice/dev/...</code>. Changes apply to the next notification; no restart needed.
+</p>
+
+@if (ViewBag.Error != null)
+{
+    <div class="alert alert-danger">@ViewBag.Error</div>
+}
+@if (ViewBag.Message != null)
+{
+    <div class="alert alert-success">@ViewBag.Message</div>
+}
+
+<div class="table-responsive">
+    <table class="table table-striped table-sm align-middle">
+        <thead>
+            <tr>
+                <th>Name</th>
+                <th>SAP URL</th>
+                <th>Username</th>
+                <th>Password</th>
+                <th>Timeout (ms)</th>
+                <th style="width: 90px;"></th>
+            </tr>
+        </thead>
+        <tbody>
+            @foreach (var item in Model)
+            {
+                <tr>
+                    <td>@item.Name</td>
+                    <td class="text-break">@item.Url</td>
+                    <td>@(string.IsNullOrEmpty(item.Username) ? "—" : item.Username)</td>
+                    <td>
+                        @if (string.IsNullOrEmpty(item.Password))
+                        {
+                            <span class="badge bg-warning text-dark">Not set</span>
+                        }
+                        else
+                        {
+                            <span class="badge bg-success">Saved</span>
+                        }
+                    </td>
+                    <td>@item.TimeoutMs</td>
+                    <td class="text-end">
+                        <a class="btn btn-sm btn-outline-primary" asp-action="Edit" asp-route-id="@item.Id">Edit</a>
+                    </td>
+                </tr>
+            }
+        </tbody>
+    </table>
+</div>

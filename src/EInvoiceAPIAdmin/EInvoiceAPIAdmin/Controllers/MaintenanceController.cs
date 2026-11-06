@@ -26,7 +26,8 @@ public class MaintenanceController(AppDbContext ctx, LiteDatabase liteDb, IWebHo
         "Logins",
         "AlertRules",
         "SmtpProfiles",
-        "EmailTemplates"
+        "EmailTemplates",
+        "SapEndpoints"
     };
 
     private static HashSet<string>? ParseTables(string? tables)
@@ -98,6 +99,7 @@ public class MaintenanceController(AppDbContext ctx, LiteDatabase liteDb, IWebHo
             if (ShouldProcess("AlertRules", selected)) { CopyCollection(src, _liteDb, "AlertRules"); processed.Add("AlertRules"); }
             if (ShouldProcess("SmtpProfiles", selected)) { CopyCollection(src, _liteDb, "SmtpProfiles"); processed.Add("SmtpProfiles"); }
             if (ShouldProcess("EmailTemplates", selected)) { CopyCollection(src, _liteDb, "EmailTemplates"); processed.Add("EmailTemplates"); }
+            if (ShouldProcess("SapEndpoints", selected)) { CopyCollection(src, _liteDb, "SapEndpoints"); processed.Add("SapEndpoints"); }
 
             // Normalize after restore only if companies were included or all tables
             if (ShouldProcess("Companies", selected))

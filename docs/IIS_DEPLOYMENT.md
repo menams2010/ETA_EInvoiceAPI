@@ -32,8 +32,8 @@ C:\inetpub\EInvoiceAPI\                   web content; the three folders are sib
 ├── Admin\                                ← publish\<arch>\EInvoiceAPIAdmin
 └── ETANotifications\                     ← publish\<arch>\IncomeTaxWebAPI
 
-C:\ETA\Data\                              outside the web folders; Modify for the API and Admin pools
-└── config.db                             shared, encrypted LiteDB (EInvoiceAPI + Admin)
+C:\ETA\Data\                              outside the web folders; Modify for all three pools
+└── config.db                             shared, encrypted LiteDB (all three apps; SAP endpoints included)
 
 C:\EInvoice\                              Modify for the ETANotifications pool (path hard-coded)
 ├── ProdDB.db
@@ -62,7 +62,7 @@ C:\EInvoice\                              Modify for the ETANotifications pool (
    .\deploy\Setup-IIS.ps1 -Arch x64
    ```
 
-   It creates or updates the three app pools and applications, sets `Database__Path`, `Database__Password` and `ASPNETCORE_ENVIRONMENT` on the pools, and grants folder permissions. You can safely run it again.
+   It creates or updates the three app pools and applications, sets `Database__Path`, `Database__Password` and `ASPNETCORE_ENVIRONMENT` on all three pools, and grants folder permissions. You can safely run it again.
 
 4. **Copy the published folders.** Stop the pools first, because in-process apps lock their DLLs:
 
@@ -80,6 +80,10 @@ C:\EInvoice\                              Modify for the ETANotifications pool (
    - Remove the two variables again.
 
    For an existing database, follow the migration and key-rotation runbook in [src/EInvoiceAPIAdmin/docs/security-hardening.md](../src/EInvoiceAPIAdmin/docs/security-hardening.md) first.
+
+6. **Enter the SAP credentials.** In Admin, open **SAP Endpoints** and edit **Prod**, and **Dev** if you use it. Enter the SAP username and password, which used to be hard-coded in IncomeTaxWebAPI, and check the URL and timeout.
+   - ETANotifications reads these values for every notification, so changes apply immediately.
+   - Until a username is set, notifications are forwarded to SAP without an `Authorization` header.
 
 ## Addresses that change with these URLs
 

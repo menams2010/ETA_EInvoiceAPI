@@ -9,11 +9,17 @@ using System.Net;
 using System.Text;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.Mvc.ModelBinding;
+using IncomeTaxWebAPI.Services;
 
 namespace IncomeTaxWebAPI.Controllers
 {
     public class EInvoiceController : ControllerBase
     {
+        // SAP URL, credentials and timeout come from EInvoiceAPIAdmin (Admin > SAP Endpoints, "Prod").
+        private readonly SapEndpointStore _sapEndpoints;
+
+        public EInvoiceController(SapEndpointStore sapEndpoints) => _sapEndpoints = sapEndpoints;
+
         [HttpPut]
         //[Route("api")]
         //[Route("api/ping")]
@@ -48,11 +54,16 @@ namespace IncomeTaxWebAPI.Controllers
             }
 
             //var client = new RestClient("https://prd-app.i.fresh.com.eg:8001/zeinvoice?sap-client=300");
-            var client = new RestClient("https://vhfrgprdai01.sap.i.fresh.com.eg:44300/zeinvoice?sap-client=300");
-            client.Timeout = 3000;
+            var sap = _sapEndpoints.Get(SapEndpointStore.Prod);
+            if (sap == null)
+            {
+                // Not configured in Admin: same response as SAP being unreachable.
+                return StatusCode(StatusCodes.Status500InternalServerError);
+            }
+            var client = new RestClient(sap.Url);
+            client.Timeout = sap.TimeoutMs;
             //var request = new RestRequest(Method.GET);
             //request.AddHeader("x-csrf-Token", "Fetch");
-            //request.AddHeader("Authorization", "Basic RnJlc2g6RnJlc2gyMDIy");
             //request.AddHeader("Content-Type", "application/json");
             //IRestResponse fresponse = client.Execute(request);
             //string csrf_Token = null;
@@ -66,7 +77,8 @@ namespace IncomeTaxWebAPI.Controllers
             //if (fresponse.StatusCode == HttpStatusCode.OK)
             //{
             var request = new RestRequest(Method.PUT);
-            request.AddHeader("Authorization", "Basic RVRBLlNlcnZpY2U6bGptcns+V3ApLVZDK3JySD1OLUc+YW1uZlwjI2V7I0VOJWRoY1EzVQ==");
+            if (sap.BasicAuthorizationHeader != null)
+                request.AddHeader("Authorization", sap.BasicAuthorizationHeader);
             //request.AddHeader("x-csrf-Token", csrf_Token);
             request.AddHeader("Content-Type", "application/json");
             request.AddParameter("application/json", delivery.DeliveryToJson(), ParameterType.RequestBody);
@@ -97,11 +109,16 @@ namespace IncomeTaxWebAPI.Controllers
             }
 
             //var client = new RestClient("https://prd-app.i.fresh.com.eg:8001/zeinvoice?sap-client=300");
-            var client = new RestClient("https://vhfrgprdai01.sap.i.fresh.com.eg:44300/zeinvoice?sap-client=300");
-            client.Timeout = 3000;
+            var sap = _sapEndpoints.Get(SapEndpointStore.Prod);
+            if (sap == null)
+            {
+                // Not configured in Admin: same response as SAP being unreachable.
+                return StatusCode(StatusCodes.Status500InternalServerError);
+            }
+            var client = new RestClient(sap.Url);
+            client.Timeout = sap.TimeoutMs;
             //var request = new RestRequest(Method.GET);
             //request.AddHeader("x-csrf-Token", "Fetch");
-            //request.AddHeader("Authorization", "Basic RnJlc2g6RnJlc2gyMDIy");
             //request.AddHeader("Content-Type", "application/json");
             //IRestResponse fresponse = client.Execute(request);
             //string csrf_Token = null;
@@ -115,7 +132,8 @@ namespace IncomeTaxWebAPI.Controllers
             //if (fresponse.StatusCode == HttpStatusCode.OK)
             //{
             var request = new RestRequest(Method.PUT);
-            request.AddHeader("Authorization", "Basic RVRBLlNlcnZpY2U6bGptcns+V3ApLVZDK3JySD1OLUc+YW1uZlwjI2V7I0VOJWRoY1EzVQ==");
+            if (sap.BasicAuthorizationHeader != null)
+                request.AddHeader("Authorization", sap.BasicAuthorizationHeader);
             //request.AddHeader("x-csrf-Token", csrf_Token);
             request.AddHeader("Content-Type", "application/json");
             request.AddParameter("application/json", delivery.DeliveryToJson(), ParameterType.RequestBody);
