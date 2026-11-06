@@ -33,15 +33,27 @@ function Invoke-Iis([string] $command) {
     $output = & "$env:windir\System32\WindowsPowerShell\v1.0\powershell.exe" -NoProfile -NonInteractive -Command "Import-Module WebAdministration; $command"
     return "$output".Trim()
 }
+# Requests without following redirects. PowerShell 7 throws on a 3xx when -MaximumRedirection is 0,
+# so a redirect is returned as an object with StatusCode and Headers.Location instead.
+function Invoke-NoRedirect([hashtable] $request) {
+    try {
+        Invoke-WebRequest @request -SkipCertificateCheck -SkipHttpErrorCheck -MaximumRedirection 0 -TimeoutSec 60 -ErrorAction Stop
+    }
+    catch {
+        $response = $_.Exception.Response
+        if ($null -eq $response) { throw }
+        [pscustomobject]@{ StatusCode = [int]$response.StatusCode; Headers = @{ Location = "$($response.Headers.Location)" }; Content = '' }
+    }
+}
 function Get-Url([string] $url, [hashtable] $extra = @{}) {
-    Invoke-WebRequest -Uri $url -SkipCertificateCheck -SkipHttpErrorCheck -MaximumRedirection 0 -TimeoutSec 60 @extra
+    Invoke-NoRedirect (@{ Uri = $url } + $extra)
 }
 
 $adminUser = 'ciadmin'
 $adminPassword = 'CiAdminPassw0rd!'
-$api = 'http://localhost/EInvoiceAPI'
+$api = 'https://localhost/EInvoiceAPI'
 $admin = 'https://localhost/EInvoiceAPI/Admin'
-$notifications = 'http://localhost/EInvoiceAPI/ETANotifications/api/einvoice'
+$notifications = 'https://localhost/EInvoiceAPI/ETANotifications/api/einvoice'
 $apiKey = @{ Authorization = 'ApiKey FreshTax2022' }
 
 # --- fake SAP: records what ETANotifications forwards -----------------------------------------------------
@@ -97,8 +109,8 @@ try {
         $session = $null
         $page = Invoke-WebRequest -Uri "$admin/Home/Login" -SkipCertificateCheck -SessionVariable session
         $token = [regex]::Match($page.Content, 'name="__RequestVerificationToken" type="hidden" value="([^"]+)"').Groups[1].Value
-        $login = Invoke-WebRequest -Uri $admin -Method Post -SkipCertificateCheck -SkipHttpErrorCheck -MaximumRedirection 0 -WebSession $session `
-            -Body @{ u_name = $adminUser; u_pass = $adminPassword; __RequestVerificationToken = $token }
+        $login = Invoke-NoRedirect @{ Uri = $admin; Method = 'Post'; WebSession = $session
+            Body = @{ u_name = $adminUser; u_pass = $adminPassword; __RequestVerificationToken = $token } }
         Check ($login.StatusCode -eq 302 -and "$($login.Headers.Location)" -match '/EInvoiceAPI/Admin/Home/Index') "$label Admin login ($($login.StatusCode) -> $($login.Headers.Location))"
         $sap = Invoke-WebRequest -Uri "$admin/SapEndpoints/Index" -SkipCertificateCheck -WebSession $session
         Check ($sap.Content -match 'localhost:7099' -and $sap.Content -match 'ci\.sap') "$label SAP Endpoints page shows the setup values"
