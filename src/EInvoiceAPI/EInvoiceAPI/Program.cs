@@ -20,6 +20,8 @@ namespace EInvoiceAPI
             Host.CreateDefaultBuilder(args)
                 .ConfigureWebHostDefaults(webBuilder =>
                 {
+                    // Out-of-process under IIS the app runs on Kestrel; same synchronous I/O setting as IIS in-process.
+                    webBuilder.ConfigureKestrel(options => options.AllowSynchronousIO = true);
                     webBuilder.UseStartup<Startup>();
                 });
     }

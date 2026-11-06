@@ -7,8 +7,12 @@
     1. Fresh silent install (also installs IIS and the Hosting Bundle if missing), x64, HTTPS binding with a
        self-signed certificate, SAP Prod pointing at a local fake SAP. Checks all three URLs, Admin login,
        ETA notification forwarding to SAP with the configured credentials, and the SQLite log.
-    2. Upgrade in place to x86 without passing the database password (setup must reuse it from IIS).
-    3. Uninstall: the IIS applications disappear, config.db is kept.
+       All apps share the one app pool "EInvoiceAPI".
+    2. Upgrade in place to x86 without passing the database password (setup must reuse it from IIS), changing
+       the password, with an older layout simulated first (Admin on its own LocalSystem pool, a separate
+       "ETANotif" site with its own pool): /NOTIFSITE=ETANotif points that site's root at ETANotifications, and
+       the old pools are deleted.
+    3. Uninstall: the IIS applications and the app pool disappear, config.db is kept.
 #>
 param(
     [Parameter(Mandatory)] [string] $Setup,
@@ -109,6 +113,9 @@ try {
     Check ($code -eq 0) 'fresh install exits with 0'
 
     Check ((Invoke-Iis "(Get-ItemProperty 'IIS:\AppPools\EInvoiceAPI' -Name enable32BitAppOnWin64).Value") -eq 'False') 'x64 install: 64-bit app pool'
+    $appPools = Invoke-Iis "(Get-WebApplication -Site 'Default Web Site' | Where-Object { `$_.path -like '/EInvoiceAPI*' } | ForEach-Object { `$_.applicationPool } | Sort-Object -Unique) -join ','"
+    Check ($appPools -eq 'EInvoiceAPI') "all three apps share the app pool EInvoiceAPI ($appPools)"
+    Check ((Invoke-Iis "@(Get-ChildItem IIS:\AppPools | Where-Object { `$_.Name -like 'EInvoiceAPI*' }).Count") -eq '1') 'only one EInvoiceAPI app pool exists'
     Check ((Invoke-Iis "@(Get-WebBinding -Name 'Default Web Site' -Protocol https -Port 443).Count") -eq '1') 'HTTPS binding added'
     Check (Test-Path 'C:\ETA\Data\config.db') 'config.db created'
 
@@ -161,11 +168,23 @@ try {
     Check ($r.StatusCode -in 301, 302, 307, 308 -and $r.Location -like 'https://*') "Admin redirects http to https ($($r.StatusCode))"
 
     # === 2. upgrade to x86, password reused from IIS ======================================================
+    # Simulate the older manual deployment: Admin on its own LocalSystem pool, ETA notifications on a separate
+    # site with its own pool (port 8081 here instead of the real public https binding).
+    New-Item -ItemType Directory -Force -Path C:\OldETANotif | Out-Null
+    Set-Content C:\OldETANotif\index.html 'old notifications app'
+    Invoke-Iis ("New-WebAppPool EInvoiceAPI_Admin | Out-Null; Set-ItemProperty IIS:\AppPools\EInvoiceAPI_Admin -Name processModel.identityType -Value LocalSystem; " +
+        "Set-ItemProperty 'IIS:\Sites\Default Web Site\EInvoiceAPI\Admin' -Name applicationPool -Value EInvoiceAPI_Admin; " +
+        "New-WebAppPool ETANotif | Out-Null; New-Website -Name ETANotif -Port 8081 -PhysicalPath C:\OldETANotif -ApplicationPool ETANotif | Out-Null") | Out-Null
+    Check ((Invoke-Iis "(Get-Item 'IIS:\Sites\Default Web Site\EInvoiceAPI\Admin').applicationPool") -eq 'EInvoiceAPI_Admin') 'older layout simulated'
     # Also changes the database password to one chosen here (the current one is read from IIS).
     $newDbPassword = 'Ci-chosen-database-password-0123456789'
-    $code = Invoke-Setup 'upgrade' @('/ARCH=x86', "/NEWDBPASSWORD=$newDbPassword")
+    $code = Invoke-Setup 'upgrade' @('/ARCH=x86', "/NEWDBPASSWORD=$newDbPassword", '/NOTIFSITE=ETANotif')
     Check ($code -eq 0) 'upgrade (x86, current password from IIS, new password chosen) exits with 0'
-    foreach ($pool in 'EInvoiceAPI', 'EInvoiceAPI-Admin', 'EInvoiceAPI-ETANotifications') {
+    Check ((Invoke-Iis "(Get-Item 'IIS:\Sites\Default Web Site\EInvoiceAPI\Admin').applicationPool") -eq 'EInvoiceAPI') 'upgrade moved Admin to the EInvoiceAPI app pool'
+    Check ((Invoke-Iis "(Get-Item 'IIS:\Sites\ETANotif').applicationPool") -eq 'EInvoiceAPI') 'ETANotif site root uses the EInvoiceAPI app pool'
+    Check ((Invoke-Iis "(Get-Item 'IIS:\Sites\ETANotif').physicalPath") -eq 'C:\inetpub\EInvoiceAPI\ETANotifications') 'ETANotif site root points at ETANotifications'
+    Check ((Invoke-Iis "(Test-Path IIS:\AppPools\EInvoiceAPI_Admin) -or (Test-Path IIS:\AppPools\ETANotif)") -eq 'False') 'old app pools deleted'
+    foreach ($pool in @('EInvoiceAPI')) {
         $value = Invoke-Iis ("Add-Type -Path `"`$env:windir\System32\inetsrv\Microsoft.Web.Administration.dll`"; " +
             "`$pools = [Microsoft.Web.Administration.ServerManager]::new().GetApplicationHostConfiguration().GetSection('system.applicationHost/applicationPools').GetCollection(); " +
             "((`$pools | Where-Object { `$_['name'] -eq '$pool' }).GetCollection('environmentVariables') | Where-Object { `$_['name'] -eq 'Database__Password' })['value']")
@@ -178,6 +197,13 @@ try {
     $r = Send-Http Get "$api/swagger/v1/swagger.json"
     Check ($r.StatusCode -eq 200) "EInvoiceAPI works after upgrade ($($r.StatusCode))"
     Invoke-Phase 'after upgrade: Admin' { $null = Test-AdminLogin 'after upgrade:' }
+    $r = Send-Http Put 'http://localhost:8081/api/einvoice/ping' $apiKey '{"Rin":"789"}'
+    Check ($r.StatusCode -eq 200 -and $r.Content -match '789') "ETANotifications at the root of the ETANotif site ($($r.StatusCode))"
+    $r = Send-Http Get 'http://localhost:8081/EInvoiceAPI/Admin'
+    Check ($r.StatusCode -in 401, 404) "Admin is not published on the ETANotif site ($($r.StatusCode))"
+
+    # The ETANotif site keeps using the pool after uninstall; remove it first so the pool can go too.
+    Invoke-Iis "Remove-Website ETANotif" | Out-Null
 
     # === 3. uninstall =====================================================================================
     $uninstaller = 'C:\inetpub\EInvoiceAPI\unins000.exe'
@@ -185,7 +211,7 @@ try {
     Check ($p.ExitCode -eq 0) 'uninstall exits with 0'
     Start-Sleep -Seconds 5
     Check ((Invoke-Iis "@(Get-WebApplication -Site 'Default Web Site' -Name 'EInvoiceAPI').Count") -eq '0') 'uninstall removed the IIS applications'
-    Check ((Invoke-Iis "Test-Path 'IIS:\AppPools\EInvoiceAPI-Admin'") -eq 'False') 'uninstall removed the app pools'
+    Check ((Invoke-Iis "Test-Path 'IIS:\AppPools\EInvoiceAPI'") -eq 'False') 'uninstall removed the app pool'
     Check (Test-Path 'C:\ETA\Data\config.db') 'uninstall kept config.db'
 }
 finally {

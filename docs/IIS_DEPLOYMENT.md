@@ -23,25 +23,29 @@ So the site needs an **HTTPS binding with a valid certificate**, plus an HTTP bi
 ```
 IIS: Sites
 └── Default Web Site                      (or the site passed as -SiteName)
-    └── /EInvoiceAPI                      pool: EInvoiceAPI                  → C:\inetpub\EInvoiceAPI\EInvoiceAPI
-        ├── /Admin                        pool: EInvoiceAPI-Admin            → C:\inetpub\EInvoiceAPI\Admin
-        └── /ETANotifications             pool: EInvoiceAPI-ETANotifications → C:\inetpub\EInvoiceAPI\ETANotifications
+    └── /EInvoiceAPI                      pool: EInvoiceAPI  → C:\inetpub\EInvoiceAPI\EInvoiceAPI
+        ├── /Admin                        pool: EInvoiceAPI  → C:\inetpub\EInvoiceAPI\Admin
+        └── /ETANotifications             pool: EInvoiceAPI  → C:\inetpub\EInvoiceAPI\ETANotifications
+└── ETANotif (optional, -NotificationsSiteName)
+    └── /                                 pool: EInvoiceAPI  → C:\inetpub\EInvoiceAPI\ETANotifications
 
 C:\inetpub\EInvoiceAPI\                   web content; the three folders are siblings on disk
 ├── EInvoiceAPI\                          ← publish\<arch>\EInvoiceAPI
 ├── Admin\                                ← publish\<arch>\EInvoiceAPIAdmin
 └── ETANotifications\                     ← publish\<arch>\IncomeTaxWebAPI
 
-C:\ETA\Data\                              outside the web folders; Modify for all three pools
+C:\ETA\Data\                              outside the web folders; Modify for the EInvoiceAPI pool
 └── config.db                             shared, encrypted LiteDB (all three apps; SAP endpoints and the ETA Notifications API key included)
 
-C:\EInvoice\                              Modify for the ETANotifications pool (path hard-coded)
+C:\EInvoice\                              Modify for the EInvoiceAPI pool (Notifications__DataFolder)
 ├── ProdDB.db
 └── DevDB.db
 ```
 
 - **URLs nest, folders don't.** The URLs are nested, but the folders on disk sit side by side. Publishing clears the target folder first, so if Admin were inside `EInvoiceAPI\`, republishing the API would delete it.
-- **One pool per app.** ASP.NET Core in-process hosting needs a separate app pool for each app, set to *No Managed Code*.
+- **One app pool for all apps.** The pool is named after the URL path (`EInvoiceAPI`), set to *No Managed Code*, and runs as *ApplicationPoolIdentity*. The apps are published with the **out-of-process** hosting model (`AspNetCoreHostingModel` in `Directory.Build.props`): each app runs in its own process behind the ASP.NET Core Module, which is what lets several ASP.NET Core apps share one pool. In-process hosting allows only one app per pool (error 500.35).
+- **Old pools are cleaned up.** When an app is moved onto the `EInvoiceAPI` pool, the pool it used before (for example `EInvoiceAPI-Admin` from earlier versions, or `EInvoiceAppPool` / `EInvoiceAPI_Admin` from a manual deployment) is deleted once no application uses it. `DefaultAppPool` and the .NET pools are never deleted.
+- **Keeping an existing public ETA URL.** If ETA already calls a separate site, for example `ETANotif` with the binding `https *:443:etax.armaeg.com`, pass `-NotificationsSiteName ETANotif` (installer: *Also serve ETA Notifications at the root of this site*). That site's root then serves ETANotifications from the same folder and pool, so `https://etax.armaeg.com/api/einvoice/...` keeps working and only the API key changes in the ETA portal. Admin and EInvoiceAPI are not published on that site. Its previous pool is deleted once unused.
 - **Nesting is safe.** Each generated `web.config` has `inheritInChildApplications="false"`, so the API's settings don't leak into `/Admin` or `/ETANotifications`.
 - **No sub-path setting needed.** IIS passes each app its sub-path automatically, so nothing needs to be configured for it on the server.
 
@@ -62,20 +66,20 @@ C:\EInvoice\                              Modify for the ETANotifications pool (
    .\deploy\Setup-IIS.ps1 -Arch x64
    ```
 
-   It creates or updates the three app pools and applications, sets `Database__Path`, `Database__Password` and `ASPNETCORE_ENVIRONMENT` on all three pools, and grants folder permissions. You can safely run it again.
+   It creates or updates the `EInvoiceAPI` app pool and the three applications, sets `Database__Path`, `Database__Password` and `ASPNETCORE_ENVIRONMENT` on the pool, and grants folder permissions. You can safely run it again.
 
-4. **Copy the published folders.** Stop the pools first, because in-process apps lock their DLLs:
+4. **Copy the published folders.** Stop the pool first, because the running apps lock their DLLs:
 
    ```powershell
-   Stop-WebAppPool EInvoiceAPI; Stop-WebAppPool EInvoiceAPI-Admin; Stop-WebAppPool EInvoiceAPI-ETANotifications
+   Stop-WebAppPool EInvoiceAPI
    robocopy publish\x64\EInvoiceAPI       C:\inetpub\EInvoiceAPI\EInvoiceAPI      /MIR
    robocopy publish\x64\EInvoiceAPIAdmin  C:\inetpub\EInvoiceAPI\Admin            /MIR
    robocopy publish\x64\IncomeTaxWebAPI   C:\inetpub\EInvoiceAPI\ETANotifications /MIR
-   Start-WebAppPool EInvoiceAPI; Start-WebAppPool EInvoiceAPI-Admin; Start-WebAppPool EInvoiceAPI-ETANotifications
+   Start-WebAppPool EInvoiceAPI
    ```
 
 5. **First install with an empty `config.db` only:**
-   - Add `Bootstrap__Username` and `Bootstrap__Password` to the **EInvoiceAPI-Admin** pool's environment variables. The password needs 12 or more characters.
+   - Add `Bootstrap__Username` and `Bootstrap__Password` to the **EInvoiceAPI** pool's environment variables. The password needs 12 or more characters.
    - Start the pool and open `/EInvoiceAPI/Admin` once.
    - Remove the two variables again.
 
