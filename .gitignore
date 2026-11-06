@@ -366,3 +366,5 @@ FodyWeavers.xsd
 
 # Output of the Folder publish profiles (see publish.ps1)
 /publish/
+/artifacts/
+/test-logs/

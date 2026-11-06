@@ -1,0 +1,15 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!-- Helper run by EInvoiceAPI-Setup.exe. Target framework comes from Directory.Build.props. -->
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <AssemblyName>ETA.SetupTool</AssemblyName>
+    <RootNamespace>ETA.SetupTool</RootNamespace>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <!-- Reuses the Admin app's own database code (schema, seeding, accounts), like the Admin regression tests. -->
+    <ProjectReference Include="../../src/EInvoiceAPIAdmin/EInvoiceAPIAdmin/EInvoiceAPIAdmin.csproj" />
+  </ItemGroup>
+
+</Project>

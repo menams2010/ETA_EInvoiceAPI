@@ -1,128 +1,229 @@
 <#
 .SYNOPSIS
-    Creates the IIS layout for the ETA e-invoicing apps (run as Administrator on the IIS server).
+    Creates or updates the IIS layout for the ETA e-invoicing apps. Run as Administrator on the IIS server.
+    EInvoiceAPI-Setup.exe runs this script too; it can also be run by hand.
 
 .DESCRIPTION
-    URLs (http or https, depending on the site's bindings):
+    URLs (http or https, depending on the site's bindings), with the default -BasePath EInvoiceAPI:
         http(s)://<host>/EInvoiceAPI                    -> EInvoiceAPI
         http(s)://<host>/EInvoiceAPI/Admin              -> EInvoiceAPIAdmin
-        http(s)://<host>/EInvoiceAPI/ETANotifications   -> IncomeTaxWebAPI
+        http(s)://<host>/EInvoiceAPI/ETANotifications   -> IncomeTaxWebAPI (ETA notifications)
 
-    Physical folders are siblings (not nested) so republishing one app never deletes another:
+    Physical folders are siblings under -WebRoot (not nested), so replacing one app never deletes another:
         <WebRoot>\EInvoiceAPI, <WebRoot>\Admin, <WebRoot>\ETANotifications
 
-    Each app gets its own app pool (required for ASP.NET Core in-process hosting), set to
-    No Managed Code. With -Arch x86 the pools run 32-bit, which the USB token driver
-    (eps2003csp11.dll) needs.
+    Each app gets its own app pool (required for ASP.NET Core in-process hosting): No Managed Code,
+    AlwaysRunning, 32-bit when -Arch x86 (needed by the USB token driver eps2003csp11.dll).
+    Every pool gets Database__Path, Database__Password and ASPNETCORE_ENVIRONMENT=Production, and Modify
+    rights on the config.db folder. Optionally adds an HTTPS binding with an existing certificate.
 
-    All three apps use config.db (ETANotifications reads its SAP endpoints from it): the script sets
-    Database__Path and Database__Password on every pool and gives each pool identity Modify rights
-    on the data folder.
+    Safe to re-run: existing pools, applications and bindings are updated, not duplicated.
+    Prerequisites: IIS and the ASP.NET Core 10.0 Hosting Bundle.
 
-    Safe to re-run: existing pools/applications are updated, not duplicated.
-    Prerequisite: ASP.NET Core 10.0 Hosting Bundle installed.
+.PARAMETER DatabasePassword
+    config.db password, the same for all apps, at least 32 characters. If omitted, the ETA_DB_PASSWORD
+    environment variable is used (this is how EInvoiceAPI-Setup.exe passes it), otherwise you are prompted.
+
+.PARAMETER StopAppPools
+    Only stop the app pools (and wait until they have stopped) so their files can be replaced; then exit.
+
+.PARAMETER Remove
+    Remove the selected IIS applications and their app pools; then exit. Files, config.db, the notification
+    logs and any HTTPS binding are left in place. Used by the uninstaller.
 
 .EXAMPLE
-    .\Setup-IIS.ps1                                  # Default Web Site, x64
+    .\Setup-IIS.ps1                                          # Default Web Site, x64, all three apps
 .EXAMPLE
-    .\Setup-IIS.ps1 -Arch x86 -SiteName "ETA"        # 32-bit pools (USB token signing)
+    .\Setup-IIS.ps1 -Arch x86 -SiteName "ETA" -BasePath EInvoiceAPI -CertificateThumbprint 3A1F...C9
+.EXAMPLE
+    .\Setup-IIS.ps1 -Apps EInvoiceAPI,Admin                  # without ETANotifications
 #>
 #Requires -RunAsAdministrator
+[CmdletBinding()]
 param(
     [string] $SiteName = 'Default Web Site',
 
-    # Parent folder for the three app folders.
+    # First URL segment; the apps live at /<BasePath>, /<BasePath>/Admin and /<BasePath>/ETANotifications.
+    [ValidatePattern('^[A-Za-z0-9_-]+$')]
+    [string] $BasePath = 'EInvoiceAPI',
+
+    # Parent folder for the app folders.
     [string] $WebRoot = 'C:\inetpub\EInvoiceAPI',
 
     # Must match the publish profile used (FolderProfile-x64 / FolderProfile-x86).
     [ValidateSet('x64', 'x86')]
     [string] $Arch = 'x64',
 
+    # Any of EInvoiceAPI, Admin, ETANotifications; also accepts one comma-separated string.
+    [string[]] $Apps = @('EInvoiceAPI', 'Admin', 'ETANotifications'),
+
     # Shared LiteDB file; keep it outside the web folders.
     [string] $DatabasePath = 'C:\ETA\Data\config.db',
 
-    # Folder IncomeTaxWebAPI writes its SQLite logs to (hard-coded in DBManager.cs).
+    # Folder ETANotifications (IncomeTaxWebAPI) writes its SQLite notification logs to.
     [string] $NotificationsDataFolder = 'C:\EInvoice',
 
-    # Same value for all three apps; at least 32 characters. Prompted for if omitted.
-    [securestring] $DatabasePassword
+    [securestring] $DatabasePassword,
+
+    # Thumbprint of a certificate in LocalMachine\My. When set, an https binding is added/updated on the site.
+    [string] $CertificateThumbprint,
+    [int] $HttpsPort = 443,
+    # Optional host name for the https binding (uses SNI when set).
+    [string] $HttpsHostName = '',
+
+    [switch] $StopAppPools,
+
+    [switch] $Remove
 )
 
 $ErrorActionPreference = 'Stop'
-Import-Module WebAdministration
 
-if (-not (Test-Path "IIS:\Sites\$SiteName")) { throw "IIS site '$SiteName' not found." }
+# EInvoiceAPI-Setup.exe sets ETA_SETUP_TRANSCRIPT to collect this script's output for its log.
+if ($env:ETA_SETUP_TRANSCRIPT) { Start-Transcript -Path $env:ETA_SETUP_TRANSCRIPT -Append | Out-Null }
 
-if (-not $DatabasePassword) {
-    $DatabasePassword = Read-Host -AsSecureString 'Database password for config.db (same for all three apps, 32+ characters)'
+$mwa = Join-Path $env:windir 'System32\inetsrv\Microsoft.Web.Administration.dll'
+if (-not (Test-Path $mwa)) { throw 'IIS is not installed (Microsoft.Web.Administration.dll not found).' }
+Add-Type -Path $mwa
+
+$definitions = [ordered]@{
+    EInvoiceAPI      = @{ Pool = $BasePath;                     Url = "/$BasePath" }
+    Admin            = @{ Pool = "$BasePath-Admin";             Url = "/$BasePath/Admin" }
+    ETANotifications = @{ Pool = "$BasePath-ETANotifications";  Url = "/$BasePath/ETANotifications" }
 }
-$plainPassword = [System.Net.NetworkCredential]::new('', $DatabasePassword).Password
+$Apps = @($Apps | ForEach-Object { $_ -split ',' } | ForEach-Object { $_.Trim() } | Where-Object { $_ })
+foreach ($a in $Apps) { if (-not $definitions.Contains($a)) { throw "Unknown app '$a'. Use EInvoiceAPI, Admin or ETANotifications." } }
+$selected = @($definitions.Keys | Where-Object { $Apps -contains $_ })
+
+# --- Remove mode -----------------------------------------------------------------------------------------
+if ($Remove) {
+    $sm = [Microsoft.Web.Administration.ServerManager]::new()
+    $site = $sm.Sites[$SiteName]
+    # Children first, then the base application.
+    foreach ($name in @($selected | Sort-Object { if ($_ -eq 'EInvoiceAPI') { 1 } else { 0 } })) {
+        $def = $definitions[$name]
+        if ($null -ne $site) {
+            $app = $site.Applications[$def.Url]
+            if ($null -ne $app) { $site.Applications.Remove($app); Write-Host "Removed application $($def.Url)" }
+        }
+        $pool = $sm.ApplicationPools[$def.Pool]
+        if ($null -ne $pool) {
+            try { [void]$pool.Stop() } catch { }
+            $sm.ApplicationPools.Remove($pool); Write-Host "Removed app pool $($def.Pool)"
+        }
+    }
+    $sm.CommitChanges()
+    Start-Sleep -Seconds 3   # let worker processes exit before files are deleted
+    return
+}
+
+# --- Stop mode -------------------------------------------------------------------------------------------
+if ($StopAppPools) {
+    $sm = [Microsoft.Web.Administration.ServerManager]::new()
+    foreach ($name in $selected) {
+        $pool = $sm.ApplicationPools[$definitions[$name].Pool]
+        if ($null -eq $pool) { continue }
+        if ($pool.State -ne [Microsoft.Web.Administration.ObjectState]::Stopped) {
+            Write-Host "Stopping app pool $($pool.Name)..."
+            try { [void]$pool.Stop() } catch { Write-Warning $_.Exception.Message }
+        }
+        for ($i = 0; $i -lt 60 -and $pool.State -ne [Microsoft.Web.Administration.ObjectState]::Stopped; $i++) {
+            Start-Sleep -Milliseconds 500
+        }
+    }
+    # Give worker processes a moment to release file locks.
+    Start-Sleep -Seconds 2
+    return
+}
+
+# --- Configure mode --------------------------------------------------------------------------------------
+$plainPassword = $null
+if ($DatabasePassword) { $plainPassword = [System.Net.NetworkCredential]::new('', $DatabasePassword).Password }
+elseif ($env:ETA_DB_PASSWORD) { $plainPassword = $env:ETA_DB_PASSWORD }
+else {
+    $secure = Read-Host -AsSecureString 'Database password for config.db (same for all apps, 32+ characters)'
+    $plainPassword = [System.Net.NetworkCredential]::new('', $secure).Password
+}
 if ($plainPassword.Length -lt 32) { throw 'The database password must be at least 32 characters.' }
 
-$apps = @(
-    @{ Pool = 'EInvoiceAPI';                  Folder = 'EInvoiceAPI';      Parent = $SiteName;                 Name = 'EInvoiceAPI';      Url = '/EInvoiceAPI';                  UsesConfigDb = $true  }
-    @{ Pool = 'EInvoiceAPI-Admin';            Folder = 'Admin';            Parent = "$SiteName\EInvoiceAPI";   Name = 'Admin';            Url = '/EInvoiceAPI/Admin';            UsesConfigDb = $true  }
-    @{ Pool = 'EInvoiceAPI-ETANotifications'; Folder = 'ETANotifications'; Parent = "$SiteName\EInvoiceAPI";  Name = 'ETANotifications'; Url = '/EInvoiceAPI/ETANotifications'; UsesConfigDb = $true  }
-)
+$sm = [Microsoft.Web.Administration.ServerManager]::new()
+$site = $sm.Sites[$SiteName]
+if ($null -eq $site) { throw "IIS site '$SiteName' not found." }
 
-function Set-PoolEnvironmentVariable([string] $pool, [string] $name, [string] $value) {
-    $filter = "system.applicationHost/applicationPools/add[@name='$pool']/environmentVariables"
-    Remove-WebConfigurationProperty -PSPath 'MACHINE/WEBROOT/APPHOST' -Filter $filter -Name '.' `
-        -AtElement @{ name = $name } -ErrorAction SilentlyContinue
-    Add-WebConfigurationProperty -PSPath 'MACHINE/WEBROOT/APPHOST' -Filter $filter -Name '.' `
-        -Value @{ name = $name; value = $value }
-}
-
-function Grant-Modify([string] $path, [string] $pool) {
-    New-Item -ItemType Directory -Force -Path $path | Out-Null
-    & icacls $path /grant "IIS AppPool\$($pool):(OI)(CI)M" /T /Q | Out-Null
-    if ($LASTEXITCODE -ne 0) { throw "icacls failed for $path" }
-}
-
-$dataFolder = Split-Path -Parent $DatabasePath
-
-foreach ($app in $apps) {
-    $physicalPath = Join-Path $WebRoot $app.Folder
+foreach ($name in $selected) {
+    $def = $definitions[$name]
+    $physicalPath = Join-Path $WebRoot $name
     New-Item -ItemType Directory -Force -Path $physicalPath | Out-Null
 
-    # App pool
-    if (-not (Test-Path "IIS:\AppPools\$($app.Pool)")) { New-WebAppPool -Name $app.Pool | Out-Null }
-    $poolPath = "IIS:\AppPools\$($app.Pool)"
-    Set-ItemProperty $poolPath -Name managedRuntimeVersion -Value ''          # No Managed Code
-    Set-ItemProperty $poolPath -Name enable32BitAppOnWin64 -Value ($Arch -eq 'x86')
-    Set-ItemProperty $poolPath -Name startMode -Value 'AlwaysRunning'
-    Set-PoolEnvironmentVariable $app.Pool 'ASPNETCORE_ENVIRONMENT' 'Production'
+    $pool = $sm.ApplicationPools[$def.Pool]
+    if ($null -eq $pool) { $pool = $sm.ApplicationPools.Add($def.Pool) }
+    $pool.ManagedRuntimeVersion = ''                                   # No Managed Code
+    $pool.Enable32BitAppOnWin64 = ($Arch -eq 'x86')
+    $pool.StartMode = [Microsoft.Web.Administration.StartMode]::AlwaysRunning
 
-    if ($app.UsesConfigDb) {
-        Set-PoolEnvironmentVariable $app.Pool 'Database__Path' $DatabasePath
-        Set-PoolEnvironmentVariable $app.Pool 'Database__Password' $plainPassword
-        Grant-Modify $dataFolder $app.Pool
-    }
-    if ($app.Name -eq 'ETANotifications') {
-        Grant-Modify $NotificationsDataFolder $app.Pool   # SQLite notification logs
-    }
-
-    # Application (create, or point an existing one at the right folder and pool)
-    $appPath = "IIS:\Sites\$($app.Parent)\$($app.Name)"
-    if (Test-Path $appPath) {
-        Set-ItemProperty $appPath -Name physicalPath -Value $physicalPath
-        Set-ItemProperty $appPath -Name applicationPool -Value $app.Pool
-    }
-    else {
-        New-WebApplication -Site $app.Parent -Name $app.Name -PhysicalPath $physicalPath -ApplicationPool $app.Pool | Out-Null
-    }
-
-    Write-Host ("{0,-30} -> {1}  (pool {2}, {3})" -f $app.Url, $physicalPath, $app.Pool, $Arch) -ForegroundColor Green
+    $app = $site.Applications[$def.Url]
+    if ($null -eq $app) { $app = $site.Applications.Add($def.Url, $physicalPath) }
+    else { $app.VirtualDirectories['/'].PhysicalPath = $physicalPath }
+    $app.ApplicationPoolName = $def.Pool
 }
 
+if ($CertificateThumbprint) {
+    $thumb = ($CertificateThumbprint -replace '[^0-9A-Fa-f]', '').ToUpperInvariant()
+    $cert = Get-Item "Cert:\LocalMachine\My\$thumb" -ErrorAction SilentlyContinue
+    if ($null -eq $cert) { throw "Certificate $thumb not found in LocalMachine\My." }
+    $info = "*:$($HttpsPort):$HttpsHostName"
+    foreach ($b in @($site.Bindings | Where-Object { $_.Protocol -eq 'https' -and $_.BindingInformation -eq $info })) {
+        $site.Bindings.Remove($b)
+    }
+    $binding = $site.Bindings.Add($info, $cert.GetCertHash(), 'My')
+    if ($HttpsHostName) { $binding.SslFlags = [Microsoft.Web.Administration.SslFlags]::Sni }
+    Write-Host "HTTPS binding $info -> certificate $thumb ($($cert.Subject))" -ForegroundColor Green
+}
+
+$sm.CommitChanges()
+
+# Environment variables on the pools (applicationHost.config, encrypted at rest by IIS only if configured;
+# the file is readable by Administrators and the IIS system accounts).
+$sm = [Microsoft.Web.Administration.ServerManager]::new()
+$poolsSection = $sm.GetApplicationHostConfiguration().GetSection('system.applicationHost/applicationPools').GetCollection()
+function Set-PoolEnvironmentVariable($poolName, [string] $name, [string] $value) {
+    $poolElement = $poolsSection | Where-Object { $_['name'] -eq $poolName } | Select-Object -First 1
+    $variables = $poolElement.GetCollection('environmentVariables')
+    foreach ($existing in @($variables | Where-Object { $_['name'] -eq $name })) { $variables.Remove($existing) }
+    $entry = $variables.CreateElement('add')
+    $entry['name'] = $name
+    $entry['value'] = $value
+    [void]$variables.Add($entry)
+}
+foreach ($name in $selected) {
+    $poolName = $definitions[$name].Pool
+    Set-PoolEnvironmentVariable $poolName 'ASPNETCORE_ENVIRONMENT' 'Production'
+    Set-PoolEnvironmentVariable $poolName 'Database__Path' $DatabasePath
+    Set-PoolEnvironmentVariable $poolName 'Database__Password' $plainPassword
+    if ($name -eq 'ETANotifications') { Set-PoolEnvironmentVariable $poolName 'Notifications__DataFolder' $NotificationsDataFolder }
+}
+$sm.CommitChanges()
 $plainPassword = $null
 
-Write-Host ''
-Write-Host 'Next steps:' -ForegroundColor Cyan
-Write-Host "  1. Copy publish\$Arch\EInvoiceAPI, publish\$Arch\EInvoiceAPIAdmin and publish\$Arch\IncomeTaxWebAPI"
-Write-Host "     into $WebRoot\EInvoiceAPI, $WebRoot\Admin and $WebRoot\ETANotifications (see docs\IIS_DEPLOYMENT.md)."
-Write-Host '  2. First install with an empty database only: set Bootstrap__Username / Bootstrap__Password on the'
-Write-Host '     EInvoiceAPI-Admin pool, start it once, then remove them.'
-Write-Host '  3. In Admin > SAP Endpoints, enter the SAP username and password for Prod (and Dev).'
-Write-Host '  4. Update the notification URL registered in the ETA portal and, if Microsoft mail is used, the'
-Write-Host '     redirect URI in the Entra app registration (see docs\IIS_DEPLOYMENT.md).'
+# Folder permissions for the pool identities ("IIS AppPool\<pool>").
+function Grant-Access([string] $path, [string] $pool, [string] $rights) {
+    New-Item -ItemType Directory -Force -Path $path | Out-Null
+    & icacls $path /grant "IIS AppPool\$($pool):(OI)(CI)$rights" /T /Q | Out-Null
+    if ($LASTEXITCODE -ne 0) { throw "icacls failed for $path" }
+}
+$dataFolder = Split-Path -Parent $DatabasePath
+foreach ($name in $selected) {
+    $poolName = $definitions[$name].Pool
+    Grant-Access (Join-Path $WebRoot $name) $poolName 'RX'
+    Grant-Access $dataFolder $poolName 'M'
+    if ($name -eq 'ETANotifications') { Grant-Access $NotificationsDataFolder $poolName 'M' }
+}
+
+# Start the pools (they may have been stopped for an upgrade).
+$sm = [Microsoft.Web.Administration.ServerManager]::new()
+foreach ($name in $selected) {
+    $pool = $sm.ApplicationPools[$definitions[$name].Pool]
+    if ($pool.State -ne [Microsoft.Web.Administration.ObjectState]::Started) {
+        try { [void]$pool.Start() } catch { Write-Warning "Could not start $($pool.Name): $($_.Exception.Message)" }
+    }
+    Write-Host ("{0,-34} -> {1}  (pool {2}, {3})" -f $definitions[$name].Url, (Join-Path $WebRoot $name), $pool.Name, $Arch) -ForegroundColor Green
+}

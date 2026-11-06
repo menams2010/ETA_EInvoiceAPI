@@ -1,0 +1,47 @@
+name: Installer
+
+on:
+  push:
+    branches: [master]
+  pull_request:
+  workflow_dispatch:
+
+jobs:
+  build-and-test:
+    name: Build and test EInvoiceAPI-Setup.exe
+    runs-on: windows-latest
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-dotnet@v4
+        with:
+          global-json-file: global.json
+
+      - name: Install Inno Setup (if missing)
+        shell: pwsh
+        run: |
+          $found = Get-ChildItem "${env:ProgramFiles(x86)}", "$env:ProgramFiles" -Filter 'Inno Setup *' -Directory -ErrorAction SilentlyContinue |
+            Where-Object { Test-Path (Join-Path $_.FullName 'ISCC.exe') }
+          if ($found) { Write-Host "Found $($found.FullName -join ', ')" } else { choco install innosetup --no-progress -y }
+
+      - name: Build installer
+        shell: pwsh
+        run: ./installer/build-installer.ps1 -Version "1.0.${{ github.run_number }}"
+
+      - name: Upload installer
+        uses: actions/upload-artifact@v4
+        with:
+          name: EInvoiceAPI-Setup
+          path: artifacts/*.exe
+
+      - name: Install, upgrade and uninstall on IIS
+        shell: pwsh
+        run: ./installer/test-installer.ps1 -Setup (Get-ChildItem artifacts/*.exe | Select-Object -First 1).FullName
+
+      - name: Upload setup logs
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: setup-logs
+          path: test-logs/

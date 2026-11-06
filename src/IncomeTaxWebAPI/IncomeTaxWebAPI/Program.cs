@@ -12,6 +12,10 @@ builder.Services.AddControllers();
 builder.Services.AddSingleton<SapEndpointStore>();
 
 var app = builder.Build();
+
+// Folder for the notification SQLite logs (default C:\EInvoice).
+var notificationsFolder = app.Configuration["Notifications:DataFolder"];
+if (!string.IsNullOrWhiteSpace(notificationsFolder)) IncomeTaxWebAPI.DBManager.DataFolder = notificationsFolder;
 _ = app.Services.GetRequiredService<SapEndpointStore>();
 
 // Under IIS the application path (/EInvoiceAPI/ETANotifications) is applied automatically. ASPNETCORE_PATHBASE

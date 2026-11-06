@@ -7,23 +7,29 @@ namespace IncomeTaxWebAPI
 {
     public static class DBManager
     {
+        /// <summary>
+        /// Folder for the notification SQLite logs (ProdDB.db, DevDB.db).
+        /// Set at startup from the "Notifications:DataFolder" setting; defaults to the original C:\EInvoice.
+        /// </summary>
+        public static string DataFolder { get; set; } = @"C:\EInvoice";
+
+        private static string DbFile(string dbName) => Path.Combine(DataFolder, dbName + ".db");
+
         public static SQLiteConnection CreateConnection(string dbName)
         {
             SQLiteConnection sqlite_conn;
-            if (File.Exists(@"C:\EInvoice\"+ dbName + ".db") == false)
+            if (File.Exists(DbFile(dbName)) == false)
             {
-                //sqlite_conn = new SQLiteConnection(@"Data Source=C:\EInvoice\"+ dbName + ".db;Version=3;");
-                sqlite_conn = new SQLiteConnection(@"Data Source=C:\EInvoice\" + dbName + ".db;");
+                Directory.CreateDirectory(DataFolder);
+                sqlite_conn = new SQLiteConnection("Data Source=" + DbFile(dbName) + ";");
                 sqlite_conn.Open();
-                //sqlite_conn.ChangePassword("1509Mariam@22Nagy@08Tawfik@1995Toma1988");
 
                 CreateDBFile(sqlite_conn);
                 sqlite_conn.Close();
             }
             else
             {
-                //sqlite_conn = new SQLiteConnection(@"Data Source=C:\EInvoice\"+ dbName + ".db;Version=3;Password=1509Mariam@22Nagy@08Tawfik@1995Toma1988;");
-                sqlite_conn = new SQLiteConnection(@"Data Source=C:\EInvoice\" + dbName + ".db;");
+                sqlite_conn = new SQLiteConnection("Data Source=" + DbFile(dbName) + ";");
             }
             try
             {
