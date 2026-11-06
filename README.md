@@ -57,7 +57,7 @@ Both are Release, framework-dependent builds. They write to `publish\<x64|x86>\<
 
 ## Installer
 
-**`EInvoiceAPI-Setup.exe`** installs and configures everything on an IIS server through a wizard. The wizard covers which apps to install, 64- or 32-bit, the IIS site and URL path, folders, the database password, the first Admin account, the SAP endpoints and an HTTPS certificate. It also handles prerequisites. Download it from the **Installer** workflow's artifacts, or build it with `installer\build-installer.ps1`. See [docs/INSTALLER.md](docs/INSTALLER.md).
+**`EInvoiceAPI-Setup.exe`** installs and configures everything on an IIS server through a wizard. The wizard covers which apps to install, 64- or 32-bit, the IIS site and URL path, folders, the database password, the first Admin account, the SAP endpoints, the ETA Notifications API key and an HTTPS certificate. It also handles prerequisites. Download it from the **Installer** workflow's artifacts, or build it with `installer\build-installer.ps1`. See [docs/INSTALLER.md](docs/INSTALLER.md).
 
 ## Hosting on IIS
 

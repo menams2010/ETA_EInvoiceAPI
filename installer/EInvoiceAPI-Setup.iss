@@ -105,7 +105,7 @@ var
   DbPasswordLabel, DbConfirmLabel: TNewStaticText;
   DbPasswordEdit, DbConfirmEdit: TPasswordEdit;
   AdminPage: TInputQueryWizardPage;
-  SapProdPage, SapDevPage: TInputQueryWizardPage;
+  SapProdPage, SapDevPage, ApiKeyPage: TInputQueryWizardPage;
   HttpsPage: TWizardPage;
   HttpsCheck: TNewCheckBox;
   CertLabel, PortLabel, HostLabel, NoCertLabel: TNewStaticText;
@@ -114,7 +114,7 @@ var
   ProgressPage: TOutputProgressWizardPage;
 
   CertThumbs: TArrayOfString;
-  CertsLoaded, HelpersExtracted, ToolExtracted, InstallIisRequested, DbExists, SapPrefilled: Boolean;
+  CertsLoaded, HelpersExtracted, ToolExtracted, InstallIisRequested, DbExists, SapPrefilled, ApiKeyGenerated: Boolean;
   GeneratedPassword, PoolPasswordTriedFor, CertParam: String;
 
 function SetEnvironmentVariable(lpName: String; lpValue: String): Boolean;
@@ -193,6 +193,15 @@ end;
 function IsHttpUrl(const S: String): Boolean;
 begin
   Result := (Pos('http://', LowerCase(S)) = 1) or (Pos('https://', LowerCase(S)) = 1);
+end;
+
+function IsValidApiKey(const S: String): Boolean;
+var
+  I: Integer;
+begin
+  Result := (Length(S) >= 8) and (Length(S) <= 200);
+  for I := 1 to Length(S) do
+    if (Ord(S[I]) < 33) or (Ord(S[I]) > 126) then Result := False;
 end;
 
 function GetSiteName(Value: String): String;
@@ -332,6 +341,7 @@ begin
       SetEnvironmentVariable('ETA_SAP_DEV_USER', Trim(SapDevPage.Values[1]));
       SetEnvironmentVariable('ETA_SAP_DEV_PASSWORD', SapDevPage.Values[2]);
       SetEnvironmentVariable('ETA_SAP_DEV_TIMEOUT', Trim(SapDevPage.Values[3]));
+      SetEnvironmentVariable('ETA_NOTIFICATIONS_API_KEY', Trim(ApiKeyPage.Values[0]));
     end;
   end;
   if Exec(SetupToolExe, Command, '', SW_HIDE, ewWaitUntilTerminated, ExitCode) then
@@ -343,6 +353,7 @@ begin
   SetEnvironmentVariable('ETA_ADMIN_PASSWORD', '');
   SetEnvironmentVariable('ETA_SAP_PROD_PASSWORD', '');
   SetEnvironmentVariable('ETA_SAP_DEV_PASSWORD', '');
+  SetEnvironmentVariable('ETA_NOTIFICATIONS_API_KEY', '');
   Log('ETA.SetupTool ' + Command + ' exit code ' + IntToStr(Result) + ':');
   LogFile(LogPath);
 end;
@@ -578,6 +589,14 @@ begin
       if (Timeout < 500) or (Timeout > 120000) then Result := 'The SAP ' + SapName + ' timeout must be 500 to 120000 ms.';
     end;
   end
+  else if PageID = ApiKeyPage.ID then
+  begin
+    if not WizardIsComponentSelected('notifications') then Exit;
+    if (Trim(ApiKeyPage.Values[0]) = '') and not DbExists then
+      Result := 'Enter the API key that ETA will send to ETANotifications.'
+    else if (Trim(ApiKeyPage.Values[0]) <> '') and not IsValidApiKey(Trim(ApiKeyPage.Values[0])) then
+      Result := 'The API key must be 8 to 200 characters: letters, digits and symbols, no spaces.';
+  end
   else if PageID = HttpsPage.ID then
   begin
     if HttpsCheck.Checked then
@@ -728,7 +747,7 @@ begin
   SapProdPage := CreateInputQueryPage(AdminPage.ID, 'SAP endpoint: Prod', 'Where ETANotifications forwards ETA notifications',
     'ETANotifications sends ETA notifications to this SAP endpoint, signing in with the SAP service user. '
     + 'Required for a new database; on an upgrade, leave a field blank to keep its current value. '
-    + 'You can change these later in Admin > SAP Endpoints.');
+    + 'You can change these later in Admin > ETA Notifications.');
   SapProdPage.Add('SAP endpoint URL:', False);
   SapProdPage.Add('SAP service user name:', False);
   SapProdPage.Add('SAP service user password:', True);
@@ -749,8 +768,17 @@ begin
   SapDevPage.Values[2] := Param('SAPDEVPASSWORD', '');
   SapDevPage.Values[3] := Param('SAPDEVTIMEOUT', '');
 
-  { 8. HTTPS binding }
-  HttpsPage := CreateCustomPage(SapDevPage.ID, 'HTTPS', 'Optionally add an HTTPS binding to the IIS site');
+  { 8. ETANotifications API key }
+  ApiKeyPage := CreateInputQueryPage(SapDevPage.ID, 'ETA Notifications API key', 'The key ETA must send with every notification',
+    'ETA sends this key in the header "Authorization: ApiKey <key>"; requests without it are rejected. '
+    + 'Enter the same key in the ETA portal. A new random key is suggested; replace it with the key already set '
+    + 'in the ETA portal if you have one. On an upgrade, leave it blank to keep the current key. '
+    + 'You can view or change it later in Admin > ETA Notifications.');
+  ApiKeyPage.Add('API key (8 to 200 characters, no spaces):', False);
+  ApiKeyPage.Values[0] := Param('NOTIFAPIKEY', '');
+
+  { 9. HTTPS binding }
+  HttpsPage := CreateCustomPage(ApiKeyPage.ID, 'HTTPS', 'Optionally add an HTTPS binding to the IIS site');
   HttpsCheck := TNewCheckBox.Create(HttpsPage);
   HttpsCheck.Parent := HttpsPage.Surface;
   HttpsCheck.Caption := 'Add an HTTPS binding to the site using an existing certificate';
@@ -792,13 +820,25 @@ function ShouldSkipPage(PageID: Integer): Boolean;
 begin
   Result := False;
   if PageID = AdminPage.ID then Result := DbExists
-  else if (PageID = SapProdPage.ID) or (PageID = SapDevPage.ID) then Result := not WizardIsComponentSelected('notifications');
+  else if (PageID = SapProdPage.ID) or (PageID = SapDevPage.ID) or (PageID = ApiKeyPage.ID) then
+    Result := not WizardIsComponentSelected('notifications');
+end;
+
+// New database: suggest a random API key (also used by silent installs that pass no /NOTIFAPIKEY).
+procedure SuggestApiKey;
+var
+  Lines: TArrayOfString;
+begin
+  if ApiKeyGenerated or DbExists or (Trim(ApiKeyPage.Values[0]) <> '') then Exit;
+  ApiKeyGenerated := True;
+  if RunHelper('NewApiKey', '', Lines) then ApiKeyPage.Values[0] := FirstLine(Lines);
 end;
 
 procedure CurPageChanged(CurPageID: Integer);
 begin
   if CurPageID = DbPage.ID then RefreshDbState
   else if CurPageID = HttpsPage.ID then LoadCertificates
+  else if CurPageID = ApiKeyPage.ID then SuggestApiKey
   else if (CurPageID = SapProdPage.ID) and (not SapPrefilled) then
   begin
     { On a new database, show the default SAP URLs (they are seeded anyway). }
@@ -837,6 +877,11 @@ begin
   S := S + NewLine + 'Database:' + NewLine;
   if DbExists then S := S + Space + 'Keep and upgrade the existing database' + NewLine
   else S := S + Space + 'Create a new database; first Admin account: ' + Trim(AdminPage.Values[0]) + NewLine;
+  if WizardIsComponentSelected('notifications') then
+  begin
+    if Trim(ApiKeyPage.Values[0]) <> '' then S := S + NewLine + 'ETA Notifications API key:' + NewLine + Space + Trim(ApiKeyPage.Values[0]) + NewLine
+    else S := S + NewLine + 'ETA Notifications API key:' + NewLine + Space + 'Keep the current key' + NewLine;
+  end;
   if GetCertThumbprint <> '' then
     S := S + NewLine + 'HTTPS:' + NewLine + Space + 'Port ' + Trim(HttpsPortEdit.Text) + ', certificate ' + GetCertThumbprint + NewLine;
   S := S + NewLine + 'Prerequisites:' + NewLine;
@@ -864,9 +909,11 @@ begin
   WizardForm.DirEdit.Text := GetWebRoot;
   RefreshDbState;
   LoadCertificates;
-  SetArrayLength(Pages, 8);
+  SuggestApiKey;
+  SetArrayLength(Pages, 9);
   Pages[0] := wpSelectComponents; Pages[1] := IisPage.ID; Pages[2] := FolderPage.ID; Pages[3] := DbPage.ID;
   Pages[4] := AdminPage.ID; Pages[5] := SapProdPage.ID; Pages[6] := SapDevPage.ID; Pages[7] := HttpsPage.ID;
+  Pages[8] := ApiKeyPage.ID;
   ProgressPage.Show;
   try
     if InstallIisRequested then
@@ -882,7 +929,7 @@ begin
     for I := 0 to GetArrayLength(Pages) - 1 do
       if Result = '' then
         if not ((Pages[I] = AdminPage.ID) and DbExists) then
-          if not (((Pages[I] = SapProdPage.ID) or (Pages[I] = SapDevPage.ID)) and not WizardIsComponentSelected('notifications')) then
+          if not (((Pages[I] = SapProdPage.ID) or (Pages[I] = SapDevPage.ID) or (Pages[I] = ApiKeyPage.ID)) and not WizardIsComponentSelected('notifications')) then
             if Pages[I] <> DbPage.ID then { the existing-database check needs the runtime; done below }
               Result := ValidatePage(Pages[I]);
     if Result <> '' then Exit;

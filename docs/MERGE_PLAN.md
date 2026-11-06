@@ -64,7 +64,7 @@ All projects target **net10.0** (LTS until November 2028). It's set once in `Dir
   - The IIS-only `IISServerOptions` setting now applies only on Windows.
 - **EInvoiceAPIAdmin and its tests** (net9.0 → net10.0): `Microsoft.Data.Sqlite` → 10.0.14. No code changes.
 - **IncomeTaxWebAPI** (.NET Framework 4.5.2, ASP.NET Web API 2 → ASP.NET Core on net10.0):
-  - `Global.asax`, `WebApiConfig`, OWIN `Startup` and `Web.config` were replaced by `Program.cs`. `ApiKeyHandler` became `ApiKeyMiddleware`, with the same key and the same 401 body.
+  - `Global.asax`, `WebApiConfig`, OWIN `Startup` and `Web.config` were replaced by `Program.cs`. `ApiKeyHandler` became `ApiKeyMiddleware`, with the same 401 body.
   - Controllers keep their routes and logic. Only the Web API 2 types changed: `ApiController` → `ControllerBase`, `HttpResponseMessage` → `IActionResult`.
   - An empty body still binds to `null`. A `null` response (SAP didn't answer 200) is now an explicit 500, which is what Web API 2 produced.
   - A missing `Accept-Language` header no longer throws on `ping` (the value was never used).
@@ -84,8 +84,8 @@ All projects target **net10.0** (LTS until November 2028). It's set once in `Dir
 - [ ] Optionally extract the shared collection names and models into a small library both apps reference.
 - [ ] Remove the stray root-level `Program.cs` files under `src/EInvoiceAPI` (empty) and `src/EInvoiceAPIAdmin` (old copy). Neither is compiled.
 - [ ] CI on `windows-latest` to build the solution and run the Admin regression suites.
-- [x] IncomeTaxWebAPI: the SAP URLs, Basic-auth credentials and timeout moved to Admin > SAP Endpoints, stored in `config.db`. The old credentials are still in git history, so change the SAP service user's password.
+- [x] IncomeTaxWebAPI: the SAP URLs, Basic-auth credentials and timeout moved to Admin > ETA Notifications, stored in `config.db`. The old credentials are still in git history, so change the SAP service user's password.
 - [x] IncomeTaxWebAPI: removed an unused database controller and its driver and hard-coded credentials.
-- [ ] IncomeTaxWebAPI: move the remaining hard-coded ETA API key into configuration.
+- [x] IncomeTaxWebAPI: the ETA API key is no longer hard-coded. It is stored in `config.db` (collection `NotificationSettings`), set by the installer, viewed and changed in Admin > ETA Notifications, and checked on every request.
 - [ ] IncomeTaxWebAPI: move RestSharp to 112.x, the same as EInvoiceAPI. This needs small code changes.
 - [ ] Optionally fix the existing `SYSLIB0014` and `SYSLIB0057` obsolete-API warnings in EInvoiceAPI (`ServicePointManager`, `X509Certificate2` constructor).

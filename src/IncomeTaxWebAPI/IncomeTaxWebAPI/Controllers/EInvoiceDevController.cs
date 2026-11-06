@@ -15,7 +15,7 @@ namespace IncomeTaxWebAPI.Controllers
 {
     public class EInvoiceDevController : ControllerBase
     {
-        // SAP URL, credentials and timeout come from EInvoiceAPIAdmin (Admin > SAP Endpoints, "Dev").
+        // SAP URL, credentials and timeout come from EInvoiceAPIAdmin (Admin > ETA Notifications, "Dev").
         private readonly SapEndpointStore _sapEndpoints;
 
         public EInvoiceDevController(SapEndpointStore sapEndpoints) => _sapEndpoints = sapEndpoints;

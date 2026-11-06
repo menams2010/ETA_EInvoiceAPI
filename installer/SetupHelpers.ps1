@@ -6,12 +6,13 @@
     ListCertificates  "thumbprint|subject|expiry" for LocalMachine\My certificates with a private key
     GetPoolPassword   Database__Password of app pool -Pool (to reuse on upgrade)
     NewPassword       a random 32-byte password (Base64)
+    NewApiKey         a random 32-character hex API key (for ETANotifications)
     InstallIIS        installs IIS (Windows Server feature or Windows client optional feature)
     ExpandZip         extracts -Zip into -Destination
 #>
 param(
     [Parameter(Mandatory)]
-    [ValidateSet('ListSites', 'ListCertificates', 'GetPoolPassword', 'NewPassword', 'InstallIIS', 'ExpandZip')]
+    [ValidateSet('ListSites', 'ListCertificates', 'GetPoolPassword', 'NewPassword', 'NewApiKey', 'InstallIIS', 'ExpandZip')]
     [string] $Action,
     [string] $Out,
     [string] $Pool,
@@ -76,6 +77,14 @@ switch ($Action) {
         $rng.GetBytes($bytes)
         $rng.Dispose()
         Write-Result @([Convert]::ToBase64String($bytes))
+    }
+
+    'NewApiKey' {
+        $bytes = New-Object byte[] 16
+        $rng = [System.Security.Cryptography.RandomNumberGenerator]::Create()
+        $rng.GetBytes($bytes)
+        $rng.Dispose()
+        Write-Result @(($bytes | ForEach-Object { $_.ToString('X2') }) -join '')
     }
 
     'InstallIIS' {

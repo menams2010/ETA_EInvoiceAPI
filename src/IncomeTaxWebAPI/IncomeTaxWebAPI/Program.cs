@@ -7,7 +7,7 @@ var builder = WebApplication.CreateBuilder(args);
 
 builder.Services.AddControllers();
 
-// SAP endpoints are managed in EInvoiceAPIAdmin and read from the shared config.db.
+// SAP endpoints and the API key are managed in EInvoiceAPIAdmin and read from the shared config.db.
 // Created at startup so missing Database:* settings fail fast instead of on the first notification.
 builder.Services.AddSingleton<SapEndpointStore>();
 

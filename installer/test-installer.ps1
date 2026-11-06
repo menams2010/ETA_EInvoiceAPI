@@ -74,7 +74,9 @@ $adminPassword = 'CiAdminPassw0rd!'
 $api = 'https://localhost/EInvoiceAPI'
 $admin = 'https://localhost/EInvoiceAPI/Admin'
 $notifications = 'https://localhost/EInvoiceAPI/ETANotifications/api/einvoice'
-$apiKey = @{ Authorization = 'ApiKey FreshTax2022' }
+$installKey = 'CiInstallKey-123'
+$changedKey = 'CiChangedKey-456'
+$apiKey = @{ Authorization = "ApiKey $installKey" }
 
 # --- fake SAP: records what ETANotifications forwards -----------------------------------------------------
 $sapLog = Join-Path $LogDir 'fake-sap.jsonl'
@@ -102,6 +104,7 @@ try {
     $code = Invoke-Setup 'install' @(
         '/INSTALLIIS=yes', '/ARCH=x64', "/ADMINUSER=$adminUser", "/ADMINPASSWORD=$adminPassword",
         '/SAPPRODURL=http://localhost:7099/zeinvoice?sap-client=300', '/SAPPRODUSER=ci.sap', '/SAPPRODPASSWORD=ci-sap-secret',
+        "/NOTIFAPIKEY=$installKey",
         "/CERT=$($cert.Thumbprint)")
     Check ($code -eq 0) 'fresh install exits with 0'
 
@@ -134,8 +137,25 @@ try {
         Check ($login.StatusCode -eq 302 -and $login.Location -match '/EInvoiceAPI/Admin/Home/Index') "$label Admin login ($($login.StatusCode) -> $($login.Location))"
         $sap = Send-Http Get "$admin/SapEndpoints/Index" -Client $session
         Check ($sap.StatusCode -eq 200 -and $sap.Content -match 'localhost:7099' -and $sap.Content -match 'ci\.sap') "$label SAP Endpoints page shows the setup values"
+        return $session
     }
-    Invoke-Phase 'fresh install: Admin' { Test-AdminLogin 'fresh install:' }
+    Invoke-Phase 'fresh install: Admin' {
+        $session = Test-AdminLogin 'fresh install:'
+        $page = Send-Http Get "$admin/SapEndpoints/Index" -Client $session
+        Check ($page.Content -match [regex]::Escape($installKey)) 'Admin shows the API key entered in setup'
+
+        # Change the API key in Admin: the old key must stop working and the new one work, without a restart.
+        $form = Send-Http Get "$admin/SapEndpoints/ApiKey" -Client $session
+        $token = [regex]::Match($form.Content, 'name="__RequestVerificationToken" type="hidden" value="([^"]+)"').Groups[1].Value
+        $save = Send-Http Post "$admin/SapEndpoints/ApiKey" -Client $session -Body @{
+            mode = 'custom'; apiKey = $changedKey; confirmApiKey = $changedKey; __RequestVerificationToken = $token }
+        Check ($save.StatusCode -eq 302) "Admin saves a new API key ($($save.StatusCode))"
+        $r = Send-Http Put "$notifications/ping" $apiKey '{"Rin":"1"}'
+        Check ($r.StatusCode -eq 401) "old API key rejected after the change ($($r.StatusCode))"
+        $script:apiKey = @{ Authorization = "ApiKey $changedKey" }
+        $r = Send-Http Put "$notifications/ping" $script:apiKey '{"Rin":"2"}'
+        Check ($r.StatusCode -eq 200) "new API key accepted immediately ($($r.StatusCode))"
+    }
 
     $r = Send-Http Get 'http://localhost/EInvoiceAPI/Admin'
     Check ($r.StatusCode -in 301, 302, 307, 308 -and $r.Location -like 'https://*') "Admin redirects http to https ($($r.StatusCode))"
@@ -145,10 +165,10 @@ try {
     Check ($code -eq 0) 'upgrade (x86, no password given) exits with 0'
     Check ((Invoke-Iis "(Get-ItemProperty 'IIS:\AppPools\EInvoiceAPI' -Name enable32BitAppOnWin64).Value") -eq 'True') 'x86 upgrade: 32-bit app pool'
     $r = Send-Http Put "$notifications/ping" $apiKey '{"Rin":"456"}'
-    Check ($r.StatusCode -eq 200) "ETANotifications works after upgrade ($($r.StatusCode))"
+    Check ($r.StatusCode -eq 200) "ETANotifications works after upgrade, API key kept ($($r.StatusCode))"
     $r = Send-Http Get "$api/swagger/v1/swagger.json"
     Check ($r.StatusCode -eq 200) "EInvoiceAPI works after upgrade ($($r.StatusCode))"
-    Invoke-Phase 'after upgrade: Admin' { Test-AdminLogin 'after upgrade:' }
+    Invoke-Phase 'after upgrade: Admin' { $null = Test-AdminLogin 'after upgrade:' }
 
     # === 3. uninstall =====================================================================================
     $uninstaller = 'C:\inetpub\EInvoiceAPI\unins000.exe'

@@ -2,12 +2,13 @@
 //
 //   ETA.SetupTool check       verify that ETA_DB_PASSWORD opens the existing ETA_DB_PATH
 //   ETA.SetupTool configure   create/upgrade config.db, create the first Admin account (fresh databases only)
-//                             and save the SAP endpoints that were entered
+//                             and save the SAP endpoints and the ETA notifications API key that were entered
 //
 // All values, secrets included, come from environment variables so they never appear on a command line:
 //   ETA_DB_PATH, ETA_DB_PASSWORD                      required
 //   ETA_ADMIN_USER, ETA_ADMIN_PASSWORD                used only when the database has no accounts yet
 //   ETA_SAP_{PROD|DEV}_{URL|USER|PASSWORD|TIMEOUT}    empty = leave the saved value unchanged
+//   ETA_NOTIFICATIONS_API_KEY                         API key ETA sends to ETANotifications; empty = unchanged
 //   ETA_SETUP_LOG                                     optional file that receives the messages below
 //
 // Exit codes: 0 ok, 1 error, 2 wrong database password, 3 database not found (check only).
@@ -103,6 +104,19 @@ try
         }
         ctx.SapEndpoints.Upsert(endpoint);
         Say($"Saved SAP endpoint {name}" + (password.Length > 0 ? " (password set)." : "."));
+    }
+
+    var apiKey = Env("ETA_NOTIFICATIONS_API_KEY").Trim();
+    if (apiKey.Length > 0)
+    {
+        var keyError = NotificationSettings.ValidateApiKey(apiKey);
+        if (keyError != null) throw new InvalidOperationException("ETA notifications API key: " + keyError);
+        ctx.NotificationSettings.Upsert(new NotificationSettings { ApiKey = apiKey, ApiKeyChangedUtc = DateTime.UtcNow });
+        Say("Saved the ETA notifications API key."); // never log the key itself
+    }
+    else if (string.IsNullOrEmpty(ctx.NotificationSettings.FindById(NotificationSettings.SingletonId)?.ApiKey))
+    {
+        Say("No ETA notifications API key is set; ETANotifications rejects requests until one is set in Admin > ETA Notifications.");
     }
 
     return 0;

@@ -94,6 +94,12 @@
                                     <label class="form-check-label" for="restore_SapEndpoints">SAP Endpoints</label>
                                 </div>
                             </div>
+                            <div class="col">
+                                <div class="form-check">
+                                    <input class="form-check-input table-option-restore" type="checkbox" value="NotificationSettings" id="restore_NotificationSettings">
+                                    <label class="form-check-label" for="restore_NotificationSettings">ETA Notifications API key</label>
+                                </div>
+                            </div>
                         </div>
                         <input type="hidden" name="tables" id="restoreTables" />
                         <div class="form-text">Only the listed tables are restored. Graph credentials and audit/send logs are not included in this operation. Use the offline procedure for legacy databases.</div>

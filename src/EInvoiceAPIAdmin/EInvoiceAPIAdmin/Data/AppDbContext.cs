@@ -24,6 +24,7 @@ namespace InvoiceWebApp.Data
         public ILiteCollection<AlertSendLog> AlertSendLogs => _db.GetCollection<AlertSendLog>("AlertSendLogs");
         public ILiteCollection<AuditLog> AuditLogs => _db.GetCollection<AuditLog>("AuditLogs");
         public ILiteCollection<SapEndpoint> SapEndpoints => _db.GetCollection<SapEndpoint>("SapEndpoints");
+        public ILiteCollection<NotificationSettings> NotificationSettings => _db.GetCollection<NotificationSettings>("NotificationSettings");
 
         public AppDbContext(string databasePath)
         {
@@ -121,7 +122,7 @@ namespace InvoiceWebApp.Data
 
             if (SapEndpoints.Count() == 0)
             {
-                // URLs previously hard-coded in IncomeTaxWebAPI. Credentials are entered in Admin > SAP Endpoints.
+                // URLs previously hard-coded in IncomeTaxWebAPI. Credentials are entered in Admin > ETA Notifications.
                 SapEndpoints.Insert(new SapEndpoint { Id = 1, Name = SapEndpoint.Prod, Url = "https://vhfrgprdai01.sap.i.fresh.com.eg:44300/zeinvoice?sap-client=300", TimeoutMs = 3000 });
                 SapEndpoints.Insert(new SapEndpoint { Id = 2, Name = SapEndpoint.Dev, Url = "https://vhfrgdevci.sap.i.fresh.com.eg:44300/zeinvoice?sap-client=300", TimeoutMs = 3000 });
             }

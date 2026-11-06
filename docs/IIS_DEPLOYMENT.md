@@ -33,7 +33,7 @@ C:\inetpub\EInvoiceAPI\                   web content; the three folders are sib
 └── ETANotifications\                     ← publish\<arch>\IncomeTaxWebAPI
 
 C:\ETA\Data\                              outside the web folders; Modify for all three pools
-└── config.db                             shared, encrypted LiteDB (all three apps; SAP endpoints included)
+└── config.db                             shared, encrypted LiteDB (all three apps; SAP endpoints and the ETA Notifications API key included)
 
 C:\EInvoice\                              Modify for the ETANotifications pool (path hard-coded)
 ├── ProdDB.db
@@ -81,7 +81,9 @@ C:\EInvoice\                              Modify for the ETANotifications pool (
 
    For an existing database, follow the migration and key-rotation runbook in [src/EInvoiceAPIAdmin/docs/security-hardening.md](../src/EInvoiceAPIAdmin/docs/security-hardening.md) first.
 
-6. **Enter the SAP credentials.** In Admin, open **SAP Endpoints** and edit **Prod**, and **Dev** if you use it. Enter the SAP username and password, which used to be hard-coded in IncomeTaxWebAPI, and check the URL and timeout.
+6. **Set the API key and SAP credentials.** In Admin, open **ETA Notifications**.
+   - **API key:** ETA must send it with every notification, as `Authorization: ApiKey <key>`. Set it (or generate one) and enter the same key in the ETA portal. With no key set, ETANotifications rejects every request with 401.
+   - **SAP endpoints:** edit **Prod**, and **Dev** if you use it. Enter the SAP username and password, which used to be hard-coded in IncomeTaxWebAPI, and check the URL and timeout.
    - ETANotifications reads these values for every notification, so changes apply immediately.
    - Until a username is set, notifications are forwarded to SAP without an `Authorization` header.
 

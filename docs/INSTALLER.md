@@ -23,14 +23,15 @@ A single setup program that installs EInvoiceAPI, the Admin site and ETANotifica
 | Folders | Web apps folder (default `C:\inetpub\EInvoiceAPI`), database folder (`C:\ETA\Data`), notification logs folder (`C:\EInvoice`) |
 | Database | **New database:** generate a strong password, or enter your own (32 or more characters). **Existing database:** it's kept and upgraded. The password is read from the existing IIS app pools when it can be, otherwise you enter it, and it's checked before installing. |
 | Admin account | First account for the Admin site. Only shown when the database is new. |
-| SAP endpoint: Prod / Dev | Endpoint URL, SAP service user name and password, and timeout. On a new database the Prod URL, user and password are required; Dev is optional. On an upgrade, blank fields keep their current values. Only shown when ETANotifications is selected. You can change these later in Admin > SAP Endpoints. |
+| SAP endpoint: Prod / Dev | Endpoint URL, SAP service user name and password, and timeout. On a new database the Prod URL, user and password are required; Dev is optional. On an upgrade, blank fields keep their current values. Only shown when ETANotifications is selected. You can change these later in Admin > ETA Notifications. |
+| ETA Notifications API key | The key ETA must send with every notification (`Authorization: ApiKey <key>`). A new database suggests a random key; replace it with the key already set in the ETA portal if you have one. On an upgrade, blank keeps the current key. Only shown when ETANotifications is selected. You can view or change it later in Admin > ETA Notifications. |
 | HTTPS | Optionally add an HTTPS binding using a certificate from *Local Computer > Personal*, with a port and an optional host name (SNI). |
 
 ## What setup does
 
 1. **IIS.** If IIS is missing, setup offers to install it.
 2. **Hosting Bundle.** If the ASP.NET Core 10 Hosting Bundle is missing, setup downloads it from Microsoft, installs it and restarts IIS. The server needs internet access for this.
-3. **Database.** Creates or upgrades `config.db`, using the Admin app's own code, creates the first Admin account, and saves the SAP endpoints.
+3. **Database.** Creates or upgrades `config.db`, using the Admin app's own code, creates the first Admin account, and saves the SAP endpoints and the ETA Notifications API key.
 4. **Files.** Stops the app pools and copies the apps for the chosen platform.
 5. **IIS configuration.** Runs `deploy\Setup-IIS.ps1`. This creates or updates one app pool per app (No Managed Code, 32-bit when x86) and the nested applications. It also sets `Database__Path`, `Database__Password` and the notification folder as app pool environment variables, grants folder permissions, adds the optional HTTPS binding, and starts the pools.
 
@@ -46,7 +47,7 @@ Every page can be filled from the command line:
 EInvoiceAPI-Setup-1.0.0.exe /VERYSILENT /SUPPRESSMSGBOXES /NORESTART /LOG="C:\Temp\eta-setup.log" `
   /COMPONENTS="api,admin,notifications" /ARCH=x86 /SITE="Default Web Site" /BASEPATH=EInvoiceAPI `
   /DIR="C:\inetpub\EInvoiceAPI" /DATADIR="C:\ETA\Data" /NOTIFDIR="C:\EInvoice" `
-  /ADMINUSER=admin /ADMINPASSWORD=... /SAPPRODURL=https://... /SAPPRODUSER=... /SAPPRODPASSWORD=... `
+  /ADMINUSER=admin /ADMINPASSWORD=... /SAPPRODURL=https://... /SAPPRODUSER=... /SAPPRODPASSWORD=... /NOTIFAPIKEY=... `
   /CERT=<thumbprint> /HTTPSPORT=443 /INSTALLIIS=yes
 ```
 
@@ -54,7 +55,7 @@ How the database password is chosen:
 - **New database:** setup generates one if `/DBPASSWORD` is omitted.
 - **Upgrade:** setup reuses the password stored in IIS.
 
-A new database with ETANotifications selected also needs `/SAPPRODURL`, `/SAPPRODUSER` and `/SAPPRODPASSWORD`; otherwise setup stops before installing.
+A new database with ETANotifications selected also needs `/SAPPRODURL`, `/SAPPRODUSER` and `/SAPPRODPASSWORD`; otherwise setup stops before installing. Without `/NOTIFAPIKEY`, a new database gets a random API key: read it in Admin > ETA Notifications and enter it in the ETA portal.
 
 Passwords given on the command line can be seen by other administrators and in process logs. Prefer the wizard, or change them afterwards.
 
