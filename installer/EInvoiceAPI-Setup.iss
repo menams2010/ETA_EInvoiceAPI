@@ -585,9 +585,17 @@ end;
 
 { ---------- wizard ---------- }
 
+{ Setup runs Windows PowerShell 5.1. If setup was started from PowerShell 7, the inherited PSModulePath makes 5.1 load
+  PowerShell 7's modules, which fails (no Cert: drive, Import-Module errors). Give child processes the 5.1 module path. }
+procedure UseWindowsPowerShellModulePath;
+begin
+  SetEnvironmentVariable('PSModulePath', ExpandConstant('{commonpf64}\WindowsPowerShell\Modules;{sys}\WindowsPowerShell\v1.0\Modules'));
+end;
+
 function InitializeSetup: Boolean;
 begin
   Result := True;
+  UseWindowsPowerShellModulePath;
   if not IisInstalled then
   begin
     if WizardSilent then
@@ -940,6 +948,12 @@ begin
 end;
 
 { ---------- uninstall ---------- }
+
+function InitializeUninstall: Boolean;
+begin
+  UseWindowsPowerShellModulePath;
+  Result := True;
+end;
 
 procedure CurUninstallStepChanged(CurUninstallStep: TUninstallStep);
 var

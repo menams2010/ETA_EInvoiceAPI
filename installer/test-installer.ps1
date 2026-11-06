@@ -29,6 +29,7 @@ function Invoke-Setup([string] $name, [string[]] $arguments) {
 }
 # The WebAdministration module (IIS: drive) only works in Windows PowerShell, so IIS queries go through powershell.exe.
 function Invoke-Iis([string] $command) {
+    $env:PSModulePath = "$env:ProgramFiles\WindowsPowerShell\Modules;$env:windir\System32\WindowsPowerShell\v1.0\Modules"
     $output = & "$env:windir\System32\WindowsPowerShell\v1.0\powershell.exe" -NoProfile -NonInteractive -Command "Import-Module WebAdministration; $command"
     return "$output".Trim()
 }
