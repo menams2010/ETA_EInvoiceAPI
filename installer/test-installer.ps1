@@ -38,20 +38,35 @@ function Invoke-Iis([string] $command) {
     $output = & "$env:windir\System32\WindowsPowerShell\v1.0\powershell.exe" -NoProfile -NonInteractive -Command "Import-Module WebAdministration; $command"
     return "$output".Trim()
 }
-# Requests without following redirects. PowerShell 7 throws on a 3xx when -MaximumRedirection is 0,
-# so a redirect is returned as an object with StatusCode and Headers.Location instead.
-function Invoke-NoRedirect([hashtable] $request) {
-    try {
-        Invoke-WebRequest @request -SkipCertificateCheck -SkipHttpErrorCheck -MaximumRedirection 0 -TimeoutSec 60 -ErrorAction Stop
-    }
-    catch {
-        $response = $_.Exception.Response
-        if ($null -eq $response) { throw }
-        [pscustomobject]@{ StatusCode = [int]$response.StatusCode; Headers = @{ Location = "$($response.Headers.Location)" }; Content = '' }
-    }
+# HTTP via HttpClient: no automatic redirects (so 3xx can be checked), a cookie jar per client, test certificate accepted.
+function New-Client {
+    $handler = [System.Net.Http.HttpClientHandler]::new()
+    $handler.AllowAutoRedirect = $false
+    $handler.CookieContainer = [System.Net.CookieContainer]::new()
+    $handler.ServerCertificateCustomValidationCallback = [System.Net.Http.HttpClientHandler]::DangerousAcceptAnyServerCertificateValidator
+    $client = [System.Net.Http.HttpClient]::new($handler)
+    $client.Timeout = [TimeSpan]::FromSeconds(120)
+    return $client
 }
-function Get-Url([string] $url, [hashtable] $extra = @{}) {
-    Invoke-NoRedirect (@{ Uri = $url } + $extra)
+$http = New-Client
+# Returns StatusCode, Location and Content. $Body: a string (sent as JSON) or a hashtable (sent as a form).
+function Send-Http([string] $Method, [string] $Url, [hashtable] $Headers = @{}, $Body = $null, $Client = $http) {
+    $request = [System.Net.Http.HttpRequestMessage]::new([System.Net.Http.HttpMethod]::new($Method.ToUpperInvariant()), $Url)
+    foreach ($key in $Headers.Keys) { [void]$request.Headers.TryAddWithoutValidation($key, [string]$Headers[$key]) }
+    if ($Body -is [hashtable]) {
+        $fields = [System.Collections.Generic.List[System.Collections.Generic.KeyValuePair[string, string]]]::new()
+        foreach ($key in $Body.Keys) { $fields.Add([System.Collections.Generic.KeyValuePair[string, string]]::new($key, [string]$Body[$key])) }
+        $request.Content = [System.Net.Http.FormUrlEncodedContent]::new($fields)
+    }
+    elseif ($null -ne $Body) {
+        $request.Content = [System.Net.Http.StringContent]::new([string]$Body, [Text.Encoding]::UTF8, 'application/json')
+    }
+    $response = $Client.SendAsync($request).GetAwaiter().GetResult()
+    [pscustomobject]@{
+        StatusCode = [int]$response.StatusCode
+        Location   = "$($response.Headers.Location)"
+        Content    = $response.Content.ReadAsStringAsync().GetAwaiter().GetResult()
+    }
 }
 
 $adminUser = 'ciadmin'
@@ -94,16 +109,16 @@ try {
     Check ((Invoke-Iis "@(Get-WebBinding -Name 'Default Web Site' -Protocol https -Port 443).Count") -eq '1') 'HTTPS binding added'
     Check (Test-Path 'C:\ETA\Data\config.db') 'config.db created'
 
-    $r = Get-Url "$api/swagger/v1/swagger.json"
+    $r = Send-Http Get "$api/swagger/v1/swagger.json"
     Check ($r.StatusCode -eq 200 -and $r.Content -match '"/EInvoiceAPI"') "EInvoiceAPI Swagger at /EInvoiceAPI ($($r.StatusCode))"
 
-    $r = Get-Url "$notifications/ping" @{ Method = 'Put'; Headers = $apiKey; ContentType = 'application/json'; Body = '{"Rin":"123"}' }
+    $r = Send-Http Put "$notifications/ping" $apiKey '{"Rin":"123"}'
     Check ($r.StatusCode -eq 200 -and $r.Content -match '123') "ETANotifications ping ($($r.StatusCode))"
-    $r = Get-Url "$notifications/ping" @{ Method = 'Put' }
+    $r = Send-Http Put "$notifications/ping" @{} '{}'
     Check ($r.StatusCode -eq 401) "ETANotifications rejects a missing API key ($($r.StatusCode))"
 
     $delivery = '{"DeliveryId":"CI-1","Type":"DocumentReceived","Count":1,"Message":[{"Type":"DocumentReceived","UUId":"U1","SubmissionUUId":"S1","LongId":"L1","InternalId":"I1","Status":"Valid"}]}'
-    $r = Get-Url "$notifications/notifications/documents" @{ Method = 'Put'; Headers = $apiKey; ContentType = 'application/json'; Body = $delivery }
+    $r = Send-Http Put "$notifications/notifications/documents" $apiKey $delivery
     Check ($r.StatusCode -eq 200) "notification forwarded to SAP ($($r.StatusCode))"
     $sent = if (Test-Path $sapLog) { Get-Content $sapLog | Select-Object -Last 1 | ConvertFrom-Json } else { $null }
     $expectedAuth = 'Basic ' + [Convert]::ToBase64String([Text.Encoding]::UTF8.GetBytes('ci.sap:ci-sap-secret'))
@@ -111,27 +126,27 @@ try {
     Check (Test-Path 'C:\EInvoice\ProdDB.db') 'notification saved to C:\EInvoice\ProdDB.db'
 
     function Test-AdminLogin([string] $label) {
-        $session = $null
-        $page = Invoke-WebRequest -Uri "$admin/Home/Login" -SkipCertificateCheck -SessionVariable session
+        $session = New-Client
+        $page = Send-Http Get "$admin/Home/Login" -Client $session
+        Check ($page.StatusCode -eq 200) "$label Admin login page ($($page.StatusCode))"
         $token = [regex]::Match($page.Content, 'name="__RequestVerificationToken" type="hidden" value="([^"]+)"').Groups[1].Value
-        $login = Invoke-NoRedirect @{ Uri = $admin; Method = 'Post'; WebSession = $session
-            Body = @{ u_name = $adminUser; u_pass = $adminPassword; __RequestVerificationToken = $token } }
-        Check ($login.StatusCode -eq 302 -and "$($login.Headers.Location)" -match '/EInvoiceAPI/Admin/Home/Index') "$label Admin login ($($login.StatusCode) -> $($login.Headers.Location))"
-        $sap = Invoke-WebRequest -Uri "$admin/SapEndpoints/Index" -SkipCertificateCheck -WebSession $session
-        Check ($sap.Content -match 'localhost:7099' -and $sap.Content -match 'ci\.sap') "$label SAP Endpoints page shows the setup values"
+        $login = Send-Http Post $admin -Client $session -Body @{ u_name = $adminUser; u_pass = $adminPassword; __RequestVerificationToken = $token }
+        Check ($login.StatusCode -eq 302 -and $login.Location -match '/EInvoiceAPI/Admin/Home/Index') "$label Admin login ($($login.StatusCode) -> $($login.Location))"
+        $sap = Send-Http Get "$admin/SapEndpoints/Index" -Client $session
+        Check ($sap.StatusCode -eq 200 -and $sap.Content -match 'localhost:7099' -and $sap.Content -match 'ci\.sap') "$label SAP Endpoints page shows the setup values"
     }
     Invoke-Phase 'fresh install: Admin' { Test-AdminLogin 'fresh install:' }
 
-    $r = Get-Url 'http://localhost/EInvoiceAPI/Admin'
-    Check ($r.StatusCode -in 301, 302, 307, 308 -and "$($r.Headers.Location)" -like 'https://*') "Admin redirects http to https ($($r.StatusCode))"
+    $r = Send-Http Get 'http://localhost/EInvoiceAPI/Admin'
+    Check ($r.StatusCode -in 301, 302, 307, 308 -and $r.Location -like 'https://*') "Admin redirects http to https ($($r.StatusCode))"
 
     # === 2. upgrade to x86, password reused from IIS ======================================================
     $code = Invoke-Setup 'upgrade' @('/ARCH=x86')
     Check ($code -eq 0) 'upgrade (x86, no password given) exits with 0'
     Check ((Invoke-Iis "(Get-ItemProperty 'IIS:\AppPools\EInvoiceAPI' -Name enable32BitAppOnWin64).Value") -eq 'True') 'x86 upgrade: 32-bit app pool'
-    $r = Get-Url "$notifications/ping" @{ Method = 'Put'; Headers = $apiKey; ContentType = 'application/json'; Body = '{"Rin":"456"}' }
+    $r = Send-Http Put "$notifications/ping" $apiKey '{"Rin":"456"}'
     Check ($r.StatusCode -eq 200) "ETANotifications works after upgrade ($($r.StatusCode))"
-    $r = Get-Url "$api/swagger/v1/swagger.json"
+    $r = Send-Http Get "$api/swagger/v1/swagger.json"
     Check ($r.StatusCode -eq 200) "EInvoiceAPI works after upgrade ($($r.StatusCode))"
     Invoke-Phase 'after upgrade: Admin' { Test-AdminLogin 'after upgrade:' }
 
