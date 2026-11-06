@@ -55,6 +55,10 @@ Both are Release, framework-dependent builds. They write to `publish\<x64|x86>\<
 
 **Using the USB token.** EInvoiceAPI signs with the token, and EInvoiceAPIAdmin's Company screen tests it. On a server that uses the token, publish those apps with `FolderProfile-x86` and set the IIS app pool's **Enable 32-Bit Applications** to **True**. EInvoiceAPI ships `eps2003csp11.dll` in its publish folder. EInvoiceAPIAdmin loads it by name, so the driver must be installed on the server.
 
+## Installer
+
+**`EInvoiceAPI-Setup.exe`** installs and configures everything on an IIS server through a wizard. The wizard covers which apps to install, 64- or 32-bit, the IIS site and URL path, folders, the database password, the first Admin account, the SAP endpoints and an HTTPS certificate. It also handles prerequisites. Download it from the **Installer** workflow's artifacts, or build it with `installer\build-installer.ps1`. See [docs/INSTALLER.md](docs/INSTALLER.md).
+
 ## Hosting on IIS
 
 | URL | App |
