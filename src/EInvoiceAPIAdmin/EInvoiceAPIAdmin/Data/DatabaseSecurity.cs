@@ -92,10 +92,22 @@ public sealed class DatabaseSecurity
         var previous = configuration["Database:PreviousPassword"];
         if (string.IsNullOrEmpty(previous) || previous == _password || !File.Exists(Path))
             throw new InvalidOperationException("Offline rotation requires an existing database and a different Database:PreviousPassword.");
+        ChangePassword(previous, Path + ".pre-security-backup");
+    }
+
+    /// <summary>
+    /// Re-encrypts the database (offline: no app may have it open) from <paramref name="currentPassword"/> to this
+    /// instance's password. The previous file is kept at <paramref name="backupPath"/>, still encrypted with the old
+    /// password. A staged copy is rebuilt and verified before it replaces the database, so a failure changes nothing.
+    /// </summary>
+    public void ChangePassword(string currentPassword, string backupPath)
+    {
+        if (string.IsNullOrEmpty(currentPassword) || currentPassword == _password || !File.Exists(Path))
+            throw new InvalidOperationException("Changing the password requires an existing database and a different new password.");
         var staged = Path + ".rotation";
-        var backup = Path + ".pre-security-backup";
-        if (File.Exists(staged) || File.Exists(backup))
+        if (File.Exists(staged) || File.Exists(backupPath))
             throw new InvalidOperationException("Rotation artifacts already exist. Review them before retrying; never overwrite the recovery backup.");
+        var previous = currentPassword;
         using (var original = OpenFile(Path, previous))
         {
             original.Checkpoint();
@@ -113,7 +125,7 @@ public sealed class DatabaseSecurity
                 foreach (var collection in verified.GetCollectionNames())
                     _ = verified.GetCollection(collection).Count();
             }
-            File.Replace(staged, Path, backup);
+            File.Replace(staged, Path, backupPath);
         }
         finally
         {

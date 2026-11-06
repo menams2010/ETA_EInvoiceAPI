@@ -161,8 +161,17 @@ try {
     Check ($r.StatusCode -in 301, 302, 307, 308 -and $r.Location -like 'https://*') "Admin redirects http to https ($($r.StatusCode))"
 
     # === 2. upgrade to x86, password reused from IIS ======================================================
-    $code = Invoke-Setup 'upgrade' @('/ARCH=x86')
-    Check ($code -eq 0) 'upgrade (x86, no password given) exits with 0'
+    # Also changes the database password to one chosen here (the current one is read from IIS).
+    $newDbPassword = 'Ci-chosen-database-password-0123456789'
+    $code = Invoke-Setup 'upgrade' @('/ARCH=x86', "/NEWDBPASSWORD=$newDbPassword")
+    Check ($code -eq 0) 'upgrade (x86, current password from IIS, new password chosen) exits with 0'
+    foreach ($pool in 'EInvoiceAPI', 'EInvoiceAPI-Admin', 'EInvoiceAPI-ETANotifications') {
+        $value = Invoke-Iis ("Add-Type -Path `"`$env:windir\System32\inetsrv\Microsoft.Web.Administration.dll`"; " +
+            "`$pools = [Microsoft.Web.Administration.ServerManager]::new().GetApplicationHostConfiguration().GetSection('system.applicationHost/applicationPools').GetCollection(); " +
+            "((`$pools | Where-Object { `$_['name'] -eq '$pool' }).GetCollection('environmentVariables') | Where-Object { `$_['name'] -eq 'Database__Password' })['value']")
+        Check ($value -eq $newDbPassword) "app pool $pool has the new database password"
+    }
+    Check (@(Get-ChildItem 'C:\ETA\Data' -Filter 'config.before-password-change-*.db').Count -eq 1) 'backup of the database with the old password kept'
     Check ((Invoke-Iis "(Get-ItemProperty 'IIS:\AppPools\EInvoiceAPI' -Name enable32BitAppOnWin64).Value") -eq 'True') 'x86 upgrade: 32-bit app pool'
     $r = Send-Http Put "$notifications/ping" $apiKey '{"Rin":"456"}'
     Check ($r.StatusCode -eq 200) "ETANotifications works after upgrade, API key kept ($($r.StatusCode))"

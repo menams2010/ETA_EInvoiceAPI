@@ -86,6 +86,7 @@ Filename: "{code:GetAdminUrl}"; Description: "Open the Admin site"; Flags: posti
 const
   DefaultSite = 'Default Web Site';
   DefaultBasePath = 'EInvoiceAPI';
+  AllApps = 'EInvoiceAPI,Admin,ETANotifications';
   DefaultDataDir = 'C:\ETA\Data';
   DefaultNotifDir = 'C:\EInvoice';
   DefaultSapProdUrl = 'https://vhfrgprdai01.sap.i.fresh.com.eg:44300/zeinvoice?sap-client=300';
@@ -104,6 +105,9 @@ var
   DbGeneratedNote: TNewStaticText;
   DbPasswordLabel, DbConfirmLabel: TNewStaticText;
   DbPasswordEdit, DbConfirmEdit: TPasswordEdit;
+  DbChangeCheck: TNewCheckBox;
+  DbNewLabel, DbNewConfirmLabel: TNewStaticText;
+  DbNewEdit, DbNewConfirmEdit: TPasswordEdit;
   AdminPage: TInputQueryWizardPage;
   SapProdPage, SapDevPage, ApiKeyPage: TInputQueryWizardPage;
   HttpsPage: TWizardPage;
@@ -312,6 +316,26 @@ begin
 end;
 
 { Runs ETA.SetupTool.exe with the database settings in its environment. Returns the exit code. }
+// True when an existing database gets a new password in this run.
+function ChangingDbPassword: Boolean;
+begin
+  Result := DbExists and DbChangeCheck.Checked;
+end;
+
+// The password the database has now (before any change in this run).
+function CurrentDbPassword: String;
+begin
+  if DbExists then Result := DbPasswordEdit.Text
+  else if DbGenerateRadio.Checked then Result := GeneratedPassword
+  else Result := DbPasswordEdit.Text;
+end;
+
+// The password the apps use after this run.
+function FinalDbPassword: String;
+begin
+  if ChangingDbPassword then Result := DbNewEdit.Text else Result := CurrentDbPassword;
+end;
+
 function RunSetupTool(const Command: String; IncludeAccountAndSap: Boolean): Integer;
 var
   LogPath: String;
@@ -321,12 +345,8 @@ begin
   DeleteFile(LogPath);
   SetEnvironmentVariable('ETA_SETUP_LOG', LogPath);
   SetEnvironmentVariable('ETA_DB_PATH', GetDatabasePath(''));
-  if DbExists then
-    SetEnvironmentVariable('ETA_DB_PASSWORD', DbPasswordEdit.Text)
-  else if DbGenerateRadio.Checked then
-    SetEnvironmentVariable('ETA_DB_PASSWORD', GeneratedPassword)
-  else
-    SetEnvironmentVariable('ETA_DB_PASSWORD', DbPasswordEdit.Text);
+  SetEnvironmentVariable('ETA_DB_PASSWORD', CurrentDbPassword);
+  if Command = 'changepassword' then SetEnvironmentVariable('ETA_DB_NEW_PASSWORD', DbNewEdit.Text);
   if IncludeAccountAndSap then
   begin
     SetEnvironmentVariable('ETA_ADMIN_USER', AdminPage.Values[0]);
@@ -350,6 +370,7 @@ begin
     Result := -1;
   { Clear secrets from this process' environment. }
   SetEnvironmentVariable('ETA_DB_PASSWORD', '');
+  SetEnvironmentVariable('ETA_DB_NEW_PASSWORD', '');
   SetEnvironmentVariable('ETA_ADMIN_PASSWORD', '');
   SetEnvironmentVariable('ETA_SAP_PROD_PASSWORD', '');
   SetEnvironmentVariable('ETA_SAP_DEV_PASSWORD', '');
@@ -358,8 +379,8 @@ begin
   LogFile(LogPath);
 end;
 
-// Runs deploy\Setup-IIS.ps1 (extracted to {app}\deploy) with the given extra arguments.
-function RunSetupIis(const ExtraArgs: String; PassPassword: Boolean): Boolean;
+// Runs deploy\Setup-IIS.ps1 for the given apps with the given extra arguments; Password '' = do not pass one.
+function RunSetupIisFor(const Apps, ExtraArgs, Password: String): Boolean;
 var
   ResultCode: Integer;
   Transcript, Script: String;
@@ -369,19 +390,21 @@ begin
   Transcript := ExpandConstant('{tmp}\setup-iis.log');
   DeleteFile(Transcript);
   SetEnvironmentVariable('ETA_SETUP_TRANSCRIPT', Transcript);
-  if PassPassword then
-  begin
-    if DbExists then SetEnvironmentVariable('ETA_DB_PASSWORD', DbPasswordEdit.Text)
-    else if DbGenerateRadio.Checked then SetEnvironmentVariable('ETA_DB_PASSWORD', GeneratedPassword)
-    else SetEnvironmentVariable('ETA_DB_PASSWORD', DbPasswordEdit.Text);
-  end;
+  if Password <> '' then SetEnvironmentVariable('ETA_DB_PASSWORD', Password);
   Result := Exec(PowerShellExe, '-NoProfile -NonInteractive -ExecutionPolicy Bypass -File ' + AddQuotes(Script)
-      + ' -SiteName ' + AddQuotes(GetSiteName('')) + ' -BasePath ' + GetBasePath('') + ' -Apps ' + GetAppList('') + ' ' + ExtraArgs,
+      + ' -SiteName ' + AddQuotes(GetSiteName('')) + ' -BasePath ' + GetBasePath('') + ' -Apps ' + Apps + ' ' + ExtraArgs,
       '', SW_HIDE, ewWaitUntilTerminated, ResultCode) and (ResultCode = 0);
   SetEnvironmentVariable('ETA_DB_PASSWORD', '');
   SetEnvironmentVariable('ETA_SETUP_TRANSCRIPT', '');
   Log('Setup-IIS.ps1 exit code ' + IntToStr(ResultCode) + ':');
   LogFile(Transcript);
+end;
+
+// Runs deploy\Setup-IIS.ps1 for the selected apps.
+function RunSetupIis(const ExtraArgs: String; PassPassword: Boolean): Boolean;
+begin
+  if PassPassword then Result := RunSetupIisFor(GetAppList(''), ExtraArgs, FinalDbPassword)
+  else Result := RunSetupIisFor(GetAppList(''), ExtraArgs, '');
 end;
 
 { ---------- dynamic page state ---------- }
@@ -408,6 +431,18 @@ begin
   end;
   DbConfirmLabel.Top := DbPasswordEdit.Top + ScaleY(30);
   DbConfirmEdit.Top := DbConfirmLabel.Top + ScaleY(18);
+
+  // Existing database: optionally change its password.
+  DbChangeCheck.Visible := DbExists;
+  DbChangeCheck.Top := DbPasswordEdit.Top + ScaleY(34);
+  DbNewLabel.Visible := DbExists and DbChangeCheck.Checked;
+  DbNewEdit.Visible := DbNewLabel.Visible;
+  DbNewConfirmLabel.Visible := DbNewLabel.Visible;
+  DbNewConfirmEdit.Visible := DbNewLabel.Visible;
+  DbNewLabel.Top := DbChangeCheck.Top + ScaleY(26);
+  DbNewEdit.Top := DbNewLabel.Top + ScaleY(18);
+  DbNewConfirmLabel.Top := DbNewEdit.Top + ScaleY(30);
+  DbNewConfirmEdit.Top := DbNewConfirmLabel.Top + ScaleY(18);
 end;
 
 { Called whenever the database page is reached (and before installing, for silent installs). }
@@ -421,7 +456,7 @@ begin
   if DbExists then
   begin
     DbStatusLabel.Caption := 'An existing database was found at ' + GetDatabasePath('') + '. It will be kept and upgraded. '
-      + 'Enter its password (the same one the apps already use).';
+      + 'Enter its password (the same one the apps already use). To replace it with a password of your choice, tick "Change the database password".';
     { On upgrade, reuse the password IIS already has for the app pools. }
     if (DbPasswordEdit.Text = '') and IisInstalled and (PoolPasswordTriedFor <> GetBasePath('')) then
     begin
@@ -561,7 +596,13 @@ begin
         end;
     end
     else if Length(GeneratedPassword) < 32 then
-      Result := 'Could not generate a password. Choose "Use this password" and enter one.';
+      Result := 'Could not generate a password. Choose "Choose my own password" and enter one.';
+    if (Result = '') and ChangingDbPassword then
+    begin
+      if Length(DbNewEdit.Text) < 32 then Result := 'The new database password must be at least 32 characters.'
+      else if DbNewEdit.Text <> DbNewConfirmEdit.Text then Result := 'The new passwords do not match.'
+      else if DbNewEdit.Text = DbPasswordEdit.Text then Result := 'The new password is the same as the current one.';
+    end;
   end
   else if PageID = AdminPage.ID then
   begin
@@ -721,7 +762,7 @@ begin
   DbGeneratedNote := NewLabel(DbPage, 'Copy it and keep it somewhere safe. Setup also stores it in the IIS app pool settings.', ScaleY(104));
   DbEnterRadio := TNewRadioButton.Create(DbPage);
   DbEnterRadio.Parent := DbPage.Surface;
-  DbEnterRadio.Caption := 'Use this password:';
+  DbEnterRadio.Caption := 'Choose my own password:';
   DbEnterRadio.Top := ScaleY(136);
   DbEnterRadio.Width := DbPage.SurfaceWidth;
   DbEnterRadio.OnClick := @DbRadioClick;
@@ -732,6 +773,18 @@ begin
   DbPasswordEdit.Text := Param('DBPASSWORD', '');
   DbConfirmEdit.Text := DbPasswordEdit.Text;
   if DbPasswordEdit.Text <> '' then DbEnterRadio.Checked := True else DbGenerateRadio.Checked := True;
+  DbChangeCheck := TNewCheckBox.Create(DbPage);
+  DbChangeCheck.Parent := DbPage.Surface;
+  DbChangeCheck.Caption := 'Change the database password';
+  DbChangeCheck.Width := DbPage.SurfaceWidth;
+  DbChangeCheck.OnClick := @DbRadioClick;
+  DbNewLabel := NewLabel(DbPage, 'New password (at least 32 characters):', 0);
+  DbNewEdit := NewPasswordEdit(DbPage, 0);
+  DbNewConfirmLabel := NewLabel(DbPage, 'Confirm the new password:', 0);
+  DbNewConfirmEdit := NewPasswordEdit(DbPage, 0);
+  DbNewEdit.Text := Param('NEWDBPASSWORD', '');
+  DbNewConfirmEdit.Text := DbNewEdit.Text;
+  DbChangeCheck.Checked := DbNewEdit.Text <> '';
 
   { 5. First Admin account (new database only) }
   AdminPage := CreateInputQueryPage(DbPage.ID, 'Admin account', 'First account for the Admin site',
@@ -875,7 +928,8 @@ begin
   S := S + 'Folders:' + NewLine + Space + 'Apps: ' + GetWebRoot + NewLine + Space + 'Database: ' + GetDatabasePath('') + NewLine;
   if WizardIsComponentSelected('notifications') then S := S + Space + 'Notification logs: ' + GetNotifDir + NewLine;
   S := S + NewLine + 'Database:' + NewLine;
-  if DbExists then S := S + Space + 'Keep and upgrade the existing database' + NewLine
+  if ChangingDbPassword then S := S + Space + 'Keep and upgrade the existing database, and change its password (all apps get the new one)' + NewLine
+  else if DbExists then S := S + Space + 'Keep and upgrade the existing database' + NewLine
   else S := S + Space + 'Create a new database; first Admin account: ' + Trim(AdminPage.Values[0]) + NewLine;
   if WizardIsComponentSelected('notifications') then
   begin
@@ -967,11 +1021,28 @@ begin
     ProgressPage.SetText('Preparing the configuration database...', GetDatabasePath(''));
     Result := ValidatePage(DbPage.ID);
     if Result <> '' then Exit;
+    // Changing the password: every app must let go of config.db first (installed now or earlier).
+    if ChangingDbPassword and IisInstalled then
+    begin
+      ProgressPage.SetText('Stopping all the app pools to change the database password...', '');
+      RunSetupIisFor(AllApps, '-StopAppPools', '');
+    end;
     case RunSetupTool('configure', True) of
       0: ;
-      2: begin Result := 'The database password does not open the existing database ' + GetDatabasePath('') + '.'; Exit; end;
+      2: Result := 'The database password does not open the existing database ' + GetDatabasePath('') + '.';
     else
-      begin Result := 'Preparing the configuration database failed. See the setup log for details.'; Exit; end;
+      Result := 'Preparing the configuration database failed. See the setup log for details.';
+    end;
+    if (Result = '') and ChangingDbPassword then
+    begin
+      ProgressPage.SetText('Changing the database password...', GetDatabasePath(''));
+      if RunSetupTool('changepassword', False) <> 0 then
+        Result := 'Changing the database password failed; the database still uses its current password. See the setup log for details.';
+    end;
+    if Result <> '' then
+    begin
+      if ChangingDbPassword and IisInstalled then RunSetupIisFor(AllApps, '-StartAppPools', '');
+      Exit;
     end;
 
     ProgressPage.SetText('Stopping the app pools...', '');
@@ -998,6 +1069,11 @@ begin
     if not RunSetupIis(Args, True) then
       SuppressibleMsgBox('The files were installed, but configuring IIS failed. See the setup log, fix the problem, '
         + 'then run setup again or run ' + ExpandConstant('{app}\deploy\Setup-IIS.ps1') + '.', mbError, MB_OK, IDOK);
+    // New database password: also give it to apps installed earlier but not selected now, and start them.
+    if ChangingDbPassword then
+      if not RunSetupIisFor(AllApps, '-SetPoolPassword', FinalDbPassword) then
+        SuppressibleMsgBox('The database password was changed, but it could not be set on every IIS app pool. '
+          + 'Run setup again, or set Database__Password on the app pools in IIS Manager.', mbError, MB_OK, IDOK);
   end;
 end;
 

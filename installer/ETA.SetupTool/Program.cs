@@ -3,9 +3,12 @@
 //   ETA.SetupTool check       verify that ETA_DB_PASSWORD opens the existing ETA_DB_PATH
 //   ETA.SetupTool configure   create/upgrade config.db, create the first Admin account (fresh databases only)
 //                             and save the SAP endpoints and the ETA notifications API key that were entered
+//   ETA.SetupTool changepassword   re-encrypt ETA_DB_PATH from ETA_DB_PASSWORD to ETA_DB_NEW_PASSWORD (apps stopped);
+//                             the previous file is kept as config.before-password-change-<time>.db (old password)
 //
 // All values, secrets included, come from environment variables so they never appear on a command line:
-//   ETA_DB_PATH, ETA_DB_PASSWORD                      required
+//   ETA_DB_PATH, ETA_DB_PASSWORD                      required (ETA_DB_PASSWORD = the current password)
+//   ETA_DB_NEW_PASSWORD                               changepassword only: the new password (32+ characters)
 //   ETA_ADMIN_USER, ETA_ADMIN_PASSWORD                used only when the database has no accounts yet
 //   ETA_SAP_{PROD|DEV}_{URL|USER|PASSWORD|TIMEOUT}    empty = leave the saved value unchanged
 //   ETA_NOTIFICATIONS_API_KEY                         API key ETA sends to ETANotifications; empty = unchanged
@@ -26,9 +29,9 @@ void Say(string message)
 string Env(string name) => Environment.GetEnvironmentVariable(name) ?? string.Empty;
 
 var command = args.FirstOrDefault()?.ToLowerInvariant();
-if (command is not ("check" or "configure"))
+if (command is not ("check" or "configure" or "changepassword"))
 {
-    Say("Usage: ETA.SetupTool check|configure (settings come from ETA_* environment variables)");
+    Say("Usage: ETA.SetupTool check|configure|changepassword (settings come from ETA_* environment variables)");
     return 1;
 }
 
@@ -52,6 +55,24 @@ var configuration = new ConfigurationBuilder().AddInMemoryCollection(settings).B
 try
 {
     var security = new DatabaseSecurity(configuration); // validates the password length (32+)
+
+    if (command == "changepassword")
+    {
+        var newPassword = Env("ETA_DB_NEW_PASSWORD");
+        if (newPassword.Length < 32) { Say("The new database password must be at least 32 characters."); return 1; }
+        if (newPassword == dbPassword) { Say("The new database password is the same as the current one; nothing to change."); return 0; }
+        if (!File.Exists(dbPath)) { Say($"Not found: {dbPath}"); return 3; }
+        using (var existing = security.Open()) _ = existing.GetCollectionNames().ToList(); // checks the current password
+        var rekey = new DatabaseSecurity(new ConfigurationBuilder().AddInMemoryCollection(new Dictionary<string, string?>
+        {
+            ["Database:Path"] = dbPath, ["Database:Password"] = newPassword
+        }).Build());
+        var backup = Path.Combine(Path.GetDirectoryName(dbPath)!,
+            $"{Path.GetFileNameWithoutExtension(dbPath)}.before-password-change-{DateTime.Now:yyyyMMdd-HHmmss}.db");
+        rekey.ChangePassword(dbPassword, backup);
+        Say($"Changed the database password. The previous file is kept as {backup} (it opens with the old password).");
+        return 0;
+    }
 
     if (command == "check")
     {

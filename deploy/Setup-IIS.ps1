@@ -27,6 +27,13 @@
 .PARAMETER StopAppPools
     Only stop the app pools (and wait until they have stopped) so their files can be replaced; then exit.
 
+.PARAMETER StartAppPools
+    Only start the app pools that exist; then exit (used to restore them when setup stops early).
+
+.PARAMETER SetPoolPassword
+    Only set Database__Password (from -DatabasePassword / ETA_DB_PASSWORD) on the app pools that exist, then start
+    them; then exit. Used after the database password was changed, so every app (installed now or earlier) gets it.
+
 .PARAMETER Remove
     Remove the selected IIS applications and their app pools; then exit. Files, config.db, the notification
     logs and any HTTPS binding are left in place. Used by the uninstaller.
@@ -72,6 +79,10 @@ param(
     [string] $HttpsHostName = '',
 
     [switch] $StopAppPools,
+
+    [switch] $StartAppPools,
+
+    [switch] $SetPoolPassword,
 
     [switch] $Remove
 )
@@ -132,6 +143,36 @@ if ($StopAppPools) {
     }
     # Give worker processes a moment to release file locks.
     Start-Sleep -Seconds 2
+    return
+}
+
+# --- Start mode / set-password mode ----------------------------------------------------------------------
+if ($StartAppPools -or $SetPoolPassword) {
+    $sm = [Microsoft.Web.Administration.ServerManager]::new()
+    if ($SetPoolPassword) {
+        $newPassword = if ($DatabasePassword) { [System.Net.NetworkCredential]::new('', $DatabasePassword).Password } else { $env:ETA_DB_PASSWORD }
+        if ([string]::IsNullOrEmpty($newPassword) -or $newPassword.Length -lt 32) { throw 'The database password must be at least 32 characters.' }
+        $pools = $sm.GetApplicationHostConfiguration().GetSection('system.applicationHost/applicationPools').GetCollection()
+        foreach ($name in $selected) {
+            $element = $pools | Where-Object { $_['name'] -eq $definitions[$name].Pool } | Select-Object -First 1
+            if ($null -eq $element) { continue }
+            $variables = $element.GetCollection('environmentVariables')
+            foreach ($existing in @($variables | Where-Object { $_['name'] -eq 'Database__Password' })) { $variables.Remove($existing) }
+            $entry = $variables.CreateElement('add')
+            $entry['name'] = 'Database__Password'
+            $entry['value'] = $newPassword
+            [void]$variables.Add($entry)
+            Write-Host "Set the database password on app pool $($definitions[$name].Pool)"
+        }
+        $sm.CommitChanges()
+        $newPassword = $null
+        $sm = [Microsoft.Web.Administration.ServerManager]::new()
+    }
+    foreach ($name in $selected) {
+        $pool = $sm.ApplicationPools[$definitions[$name].Pool]
+        if ($null -eq $pool -or $pool.State -eq [Microsoft.Web.Administration.ObjectState]::Started) { continue }
+        try { [void]$pool.Start(); Write-Host "Started app pool $($pool.Name)" } catch { Write-Warning "Could not start $($pool.Name): $($_.Exception.Message)" }
+    }
     return
 }
 
