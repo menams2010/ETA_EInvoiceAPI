@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using System.Data;
 using System.IO;
 using LiteDB;
@@ -97,6 +97,7 @@ namespace EInvoiceAPI
                     _dbPath);
 
             // Shared mode: EInvoiceAPIAdmin keeps the same file open while it runs.
+            ETA.Shared.LiteDbSharedMutex.EnsureAccessible(_dbPath);
             return new LiteDatabase(new ConnectionString
             {
                 Filename = _dbPath,

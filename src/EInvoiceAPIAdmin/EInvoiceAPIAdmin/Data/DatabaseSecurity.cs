@@ -22,7 +22,12 @@ public sealed class DatabaseSecurity
     // The live database is opened in shared mode because EInvoiceAPI reads and writes the same
     // config.db (tokens, companies, settings) while this app is running. Offline operations
     // below (backup copy, key rotation, legacy migration) keep exclusive Direct access.
-    public LiteDatabase Open() => OpenFile(Path, _password, connection: ConnectionType.Shared);
+    public LiteDatabase Open()
+    {
+        // Lets the other IIS app pools (EInvoiceAPI, ETANotifications) open the file in shared mode too.
+        ETA.Shared.LiteDbSharedMutex.EnsureAccessible(Path);
+        return OpenFile(Path, _password, connection: ConnectionType.Shared);
+    }
 
     public LegacyDatabaseMigration.Result MigrateLegacy(IConfiguration configuration)
     {

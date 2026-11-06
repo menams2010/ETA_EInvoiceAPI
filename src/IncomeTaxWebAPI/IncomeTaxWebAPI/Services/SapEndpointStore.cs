@@ -56,6 +56,7 @@ namespace IncomeTaxWebAPI.Services
                 throw new FileNotFoundException("Config database not found. Check Database:Path.", _dbPath);
 
             // Shared mode: EInvoiceAPIAdmin and EInvoiceAPI use the same file at the same time.
+            ETA.Shared.LiteDbSharedMutex.EnsureAccessible(_dbPath);
             using var db = new LiteDatabase(new ConnectionString
             {
                 Filename = _dbPath,

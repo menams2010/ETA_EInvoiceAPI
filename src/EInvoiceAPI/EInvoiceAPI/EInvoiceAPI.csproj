@@ -25,4 +25,9 @@
     <PackageReference Include="System.Security.Permissions" Version="10.0.14" />
   </ItemGroup>
 
+  <ItemGroup>
+    <!-- Lets the IIS app pools share config.db (LiteDB shared mode); see the file for details. -->
+    <Compile Include="..\..\Shared\LiteDbSharedMutex.cs" Link="Shared\LiteDbSharedMutex.cs" />
+  </ItemGroup>
+
 </Project>
