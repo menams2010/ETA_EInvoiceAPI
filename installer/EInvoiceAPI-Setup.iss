@@ -566,6 +566,12 @@ begin
     else begin SapPage := SapDevPage; SapName := 'Dev'; end;
     if (Trim(SapPage.Values[0]) <> '') and not IsHttpUrl(Trim(SapPage.Values[0])) then
       Result := 'The SAP ' + SapName + ' URL must start with http:// or https://.'
+    { New database: nothing is stored yet, so Prod needs the endpoint link and the SAP service user and password. }
+    else if (not DbExists) and (PageID = SapProdPage.ID)
+      and ((Trim(SapPage.Values[0]) = '') or (Trim(SapPage.Values[1]) = '') or (SapPage.Values[2] = '')) then
+      Result := 'Enter the SAP Prod endpoint URL, service user name and password.'
+    else if (Trim(SapPage.Values[1]) <> '') and (SapPage.Values[2] = '') and not DbExists then
+      Result := 'Enter the password for SAP ' + SapName + ' user ' + Trim(SapPage.Values[1]) + '.'
     else if Trim(SapPage.Values[3]) <> '' then
     begin
       Timeout := StrToIntDef(Trim(SapPage.Values[3]), -1);
@@ -720,11 +726,12 @@ begin
 
   { 6-7. SAP endpoints (ETANotifications) }
   SapProdPage := CreateInputQueryPage(AdminPage.ID, 'SAP endpoint: Prod', 'Where ETANotifications forwards ETA notifications',
-    'Used by /<path>/ETANotifications/api/einvoice/... Leave a field blank to keep its current value. '
-    + 'These can be changed later in Admin > SAP Endpoints.');
-  SapProdPage.Add('SAP URL:', False);
-  SapProdPage.Add('User name:', False);
-  SapProdPage.Add('Password:', True);
+    'ETANotifications sends ETA notifications to this SAP endpoint, signing in with the SAP service user. '
+    + 'Required for a new database; on an upgrade, leave a field blank to keep its current value. '
+    + 'You can change these later in Admin > SAP Endpoints.');
+  SapProdPage.Add('SAP endpoint URL:', False);
+  SapProdPage.Add('SAP service user name:', False);
+  SapProdPage.Add('SAP service user password:', True);
   SapProdPage.Add('Timeout in milliseconds (default 3000):', False);
   SapProdPage.Values[0] := Param('SAPPRODURL', '');
   SapProdPage.Values[1] := Param('SAPPRODUSER', '');
@@ -732,10 +739,10 @@ begin
   SapProdPage.Values[3] := Param('SAPPRODTIMEOUT', '');
 
   SapDevPage := CreateInputQueryPage(SapProdPage.ID, 'SAP endpoint: Dev', 'Used by the /dev notification routes',
-    'Used by /<path>/ETANotifications/api/einvoice/dev/... Leave a field blank to keep its current value.');
-  SapDevPage.Add('SAP URL:', False);
-  SapDevPage.Add('User name:', False);
-  SapDevPage.Add('Password:', True);
+    'Used by /<path>/ETANotifications/api/einvoice/dev/... Optional. Leave a field blank to keep its current value.');
+  SapDevPage.Add('SAP endpoint URL:', False);
+  SapDevPage.Add('SAP service user name:', False);
+  SapDevPage.Add('SAP service user password:', True);
   SapDevPage.Add('Timeout in milliseconds (default 3000):', False);
   SapDevPage.Values[0] := Param('SAPDEVURL', '');
   SapDevPage.Values[1] := Param('SAPDEVUSER', '');

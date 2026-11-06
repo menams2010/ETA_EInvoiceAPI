@@ -60,8 +60,6 @@ namespace IncomeTaxWebAPI.Controllers
                 return StatusCode(StatusCodes.Status500InternalServerError);
             }
             var client = new RestClient(sap.Url);
-            //var client = new RestClient("http://192.168.22.73:50100/zeinvoice?sap-client=300");
-            //var client = new RestClient("https://192.168.22.73:50101/zeinvoice?sap-client=300");
             client.Timeout = sap.TimeoutMs;
             //var request = new RestRequest(Method.GET);
             //request.AddHeader("x-csrf-Token", "Fetch");
@@ -116,8 +114,6 @@ namespace IncomeTaxWebAPI.Controllers
                 return StatusCode(StatusCodes.Status500InternalServerError);
             }
             var client = new RestClient(sap.Url);
-            //var client = new RestClient("http://192.168.22.73:50100/zeinvoice?sap-client=300");
-            //var client = new RestClient("https://192.168.22.73:50101/zeinvoice?sap-client=300");
             client.Timeout = sap.TimeoutMs;
             //var request = new RestRequest(Method.GET);
             //request.AddHeader("x-csrf-Token", "Fetch");

@@ -18,10 +18,10 @@ public class SapEndpoint
     /// <summary>"Prod" (api/einvoice/...) or "Dev" (api/einvoice/dev/...). Fixed; not editable.</summary>
     public string Name { get; set; } = string.Empty;
 
-    [Required, Url, Display(Name = "SAP URL")]
+    [Required, Url, Display(Name = "SAP endpoint URL")]
     public string Url { get; set; } = string.Empty;
 
-    [Display(Name = "Username")]
+    [Display(Name = "SAP service user name")]
     public string? Username { get; set; }
 
     /// <summary>Write-only in the UI; never rendered back to the browser.</summary>

@@ -68,8 +68,7 @@ namespace EInvoiceAPI.Helpers
             string companyCode,
             string environmentId,
             out TokenSettings? tokenSettings,
-            string sysUIFormat,
-            SlackLogger? slackLogger = null)
+            string sysUIFormat)
         {
             int maxTries = 3;
             tokenSettings = null;
@@ -87,11 +86,6 @@ namespace EInvoiceAPI.Helpers
                     {
                         if (expirationDate < DateOnly.FromDateTime(DateTime.Now))
                         {
-                            slackLogger?.LogHelperAsync(
-                                companyCode,
-                                $"GetToken failed: ClientSecretExpired for companyCode={companyCode}, environmentId={environmentId}, attempt={attempt + 1}",
-                                "TokenHelper.GetToken"
-                            );
                             return "CANNOT: CLIENT_SECRET_EXPIRED";
                         }
                     }
@@ -100,11 +94,6 @@ namespace EInvoiceAPI.Helpers
                 tokenSettings = MapTokenTable(tokenTable, sysUIFormat);
                 if (tokenSettings == null)
                 {
-                    slackLogger?.LogHelperAsync(
-                        companyCode,
-                        $"GetToken failed: MAP_TOKEN_TABLE_FAILED for companyCode={companyCode}, environmentId={environmentId}, attempt={attempt + 1}",
-                        "TokenHelper.GetToken"
-                    );
                     return "CANNOT: MAP_TOKEN_TABLE_FAILED";
                 }
 
@@ -132,43 +121,18 @@ namespace EInvoiceAPI.Helpers
 
                     if (tokenResponse.StatusCode != System.Net.HttpStatusCode.OK && tokenResponse.Content == null)
                     {
-                        slackLogger?.LogHelperAsync(
-                            companyCode,
-                            $"GetToken failed: HTTP {tokenResponse.StatusCode} (no content) for companyCode={companyCode}, environmentId={environmentId}, attempt={attempt + 1}",
-                            "TokenHelper.GetToken"
-                        );
                         continue;
                     }
                     else if (tokenResponse.StatusCode != System.Net.HttpStatusCode.OK && tokenResponse.Content != null)
                     {
-                        slackLogger?.LogHelperAsync(
-                            companyCode,
-                            $"GetToken failed: HTTP {tokenResponse.StatusCode}, Content: {tokenResponse.Content}",
-                            "TokenHelper.GetToken"
-                        );
                         return $"CANNOT: {tokenResponse.Content}";
                     }
                     TokenManager.SaveToken(Token.FromJson(tokenResponse.Content).AccessToken, DateTime.Now.ToString(sysUIFormat, enUS), companyCode, environmentId);
 
-                    slackLogger?.LogHelperAsync(
-                        companyCode,
-                        $"GetToken succeeded: Token refreshed for companyCode={companyCode}, environmentId={environmentId}",
-                        "TokenHelper.GetToken"
-                    );
                     return Token.FromJson(tokenResponse.Content).AccessToken;
                 }
-                slackLogger?.LogHelperAsync(
-                    companyCode,
-                    $"GetToken succeeded: Token reused for companyCode={companyCode}, environmentId={environmentId}",
-                    "TokenHelper.GetToken"
-                );
                 return tokenSettings.Token;
             }
-            slackLogger?.LogHelperAsync(
-                companyCode,
-                $"GetToken failed: UNKNOWN_ERROR for companyCode={companyCode}, environmentId={environmentId}",
-                "TokenHelper.GetToken"
-            );
             return "CANNOT: UNKNOWN_ERROR";
         }
     }

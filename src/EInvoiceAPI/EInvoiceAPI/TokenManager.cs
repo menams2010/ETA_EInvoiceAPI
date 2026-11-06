@@ -109,7 +109,7 @@ namespace EInvoiceAPI
         private static int ResolveEnvId(string environmentId)
             => environmentId.Equals("Prod", StringComparison.OrdinalIgnoreCase) ? ProdEnvId : PreProdEnvId;
 
-        public static object? GetSettings(string settingName, SlackLogger? slackLogger = null, string? companyCode = null)
+        public static object? GetSettings(string settingName)
         {
             try
             {
@@ -121,7 +121,6 @@ namespace EInvoiceAPI
             catch (Exception ex)
             {
                 var msg = "Error reading setting from config file: " + ex.Message;
-                slackLogger?.LogHelperAsync(companyCode, msg, "TokenManager.GetSettings").GetAwaiter().GetResult();
                 throw new Exception(msg, ex);
             }
         }

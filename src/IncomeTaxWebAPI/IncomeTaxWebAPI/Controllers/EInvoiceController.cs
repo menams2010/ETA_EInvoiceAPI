@@ -53,7 +53,6 @@ namespace IncomeTaxWebAPI.Controllers
                 }
             }
 
-            //var client = new RestClient("https://prd-app.i.fresh.com.eg:8001/zeinvoice?sap-client=300");
             var sap = _sapEndpoints.Get(SapEndpointStore.Prod);
             if (sap == null)
             {
@@ -108,7 +107,6 @@ namespace IncomeTaxWebAPI.Controllers
                 }
             }
 
-            //var client = new RestClient("https://prd-app.i.fresh.com.eg:8001/zeinvoice?sap-client=300");
             var sap = _sapEndpoints.Get(SapEndpointStore.Prod);
             if (sap == null)
             {

@@ -62,18 +62,16 @@ namespace EInvoiceAPI.Controllers
         private readonly Serializer _serializer;
         private readonly Hasher _hasher;
         private readonly CertificateCache _certificateCache;
-        private readonly SlackLogger _slackLogger;
 
         private readonly string DllLibPath = "eps2003csp11.dll";
         private static readonly Dictionary<string, object> SlotLocks = new();
         private static readonly object SlotLocksDictLock = new();
 
-        public Invoice(Serializer serializer, Hasher hasher, CertificateCache certificateCache, SlackLogger slackLogger)
+        public Invoice(Serializer serializer, Hasher hasher, CertificateCache certificateCache)
         {
             _serializer = serializer;
             _hasher = hasher;
             _certificateCache = certificateCache;
-            _slackLogger = slackLogger;
         }
 
         [HttpPost("[action]")]
@@ -144,10 +142,6 @@ namespace EInvoiceAPI.Controllers
             //    }).ToString();
             //}
 
-            ////////////////////////////////////////////////////////////
-            // Log the API call to Slack
-            //await _slackLogger.LogApiCallAsync(CompanyCode, Request, "SignInvoice");
-            ////////////////////////////////////////////////////////////
 
             return new ContentResult
             {
@@ -234,10 +228,6 @@ namespace EInvoiceAPI.Controllers
             //});
 
 
-            ////////////////////////////////////////////////////////////
-            // Log the API call to Slack
-            //_slackLogger.LogApiCallAsync(CompanyCode, Request, "SendInvoice").GetAwaiter().GetResult();
-            ////////////////////////////////////////////////////////////
 
         GetToken:
             var token = TokenHelper.GetToken(CompanyCode, EnvironmentId, out var tokenSettings, sysUIFormat);
@@ -288,9 +278,6 @@ namespace EInvoiceAPI.Controllers
 
                 // Execute the request synchronously by blocking on the async call
                 response = client.ExecutePost(request);
-
-                // Log the API call to Slack synchronously
-                _slackLogger.LogApiCallAsync(CompanyCode, EnvironmentId, client, request, response, "SendInvoice").GetAwaiter().GetResult();
 
                 if ((int)response.StatusCode == 0 || response.StatusCode == (HttpStatusCode)429)
                 {

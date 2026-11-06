@@ -23,7 +23,7 @@ A single setup program that installs EInvoiceAPI, the Admin site and ETANotifica
 | Folders | Web apps folder (default `C:\inetpub\EInvoiceAPI`), database folder (`C:\ETA\Data`), notification logs folder (`C:\EInvoice`) |
 | Database | **New database:** generate a strong password, or enter your own (32 or more characters). **Existing database:** it's kept and upgraded. The password is read from the existing IIS app pools when it can be, otherwise you enter it, and it's checked before installing. |
 | Admin account | First account for the Admin site. Only shown when the database is new. |
-| SAP endpoint: Prod / Dev | URL, username, password and timeout. Blank fields keep their current values. Only shown when ETANotifications is selected. You can change these later in Admin > SAP Endpoints. |
+| SAP endpoint: Prod / Dev | Endpoint URL, SAP service user name and password, and timeout. On a new database the Prod URL, user and password are required; Dev is optional. On an upgrade, blank fields keep their current values. Only shown when ETANotifications is selected. You can change these later in Admin > SAP Endpoints. |
 | HTTPS | Optionally add an HTTPS binding using a certificate from *Local Computer > Personal*, with a port and an optional host name (SNI). |
 
 ## What setup does
@@ -53,6 +53,8 @@ EInvoiceAPI-Setup-1.0.0.exe /VERYSILENT /SUPPRESSMSGBOXES /NORESTART /LOG="C:\Te
 How the database password is chosen:
 - **New database:** setup generates one if `/DBPASSWORD` is omitted.
 - **Upgrade:** setup reuses the password stored in IIS.
+
+A new database with ETANotifications selected also needs `/SAPPRODURL`, `/SAPPRODUSER` and `/SAPPRODPASSWORD`; otherwise setup stops before installing.
 
 Passwords given on the command line can be seen by other administrators and in process logs. Prefer the wizard, or change them afterwards.
 

@@ -13,15 +13,15 @@
 
     <div class="row g-3">
         <div class="col-12">
-            <label class="form-label" for="url">SAP URL</label>
+            <label class="form-label" for="url">SAP endpoint URL</label>
             <input class="form-control" id="url" name="url" value="@Model.Url" required />
         </div>
         <div class="col-12 col-md-6">
-            <label class="form-label" for="username">Username (HTTP Basic)</label>
+            <label class="form-label" for="username">SAP service user name (HTTP Basic)</label>
             <input class="form-control" id="username" name="username" value="@Model.Username" autocomplete="off" />
         </div>
         <div class="col-12 col-md-6">
-            <label class="form-label" for="password">Password</label>
+            <label class="form-label" for="password">SAP service user password</label>
             <input class="form-control" id="password" name="password" type="password" autocomplete="new-password"
                    placeholder="@(passwordSaved ? "Saved: leave blank to keep" : "Not set")" />
             @if (passwordSaved)
