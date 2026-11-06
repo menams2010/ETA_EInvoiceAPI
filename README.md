@@ -71,4 +71,4 @@ Both are Release, framework-dependent builds. They write to `publish\<x64|x86>\<
 
 ## Shared configuration database
 
-EInvoiceAPI and EInvoiceAPIAdmin share one LiteDB configuration database (`config.db`). Give both apps the same `Database__Path` and `Database__Password`. See [docs/MERGE_PLAN.md](docs/MERGE_PLAN.md) and the Admin app's [security-hardening runbook](src/EInvoiceAPIAdmin/docs/security-hardening.md).
+EInvoiceAPI and EInvoiceAPIAdmin share one LiteDB configuration database (`config.db`). Give both apps the same `Database__Path` and `Database__Password`. To bring in a `config.db` from any earlier version (SQLite, LiteDB 4 or 5), use **Admin > Migrate Database**; see [docs/DATABASE_VERSIONS.md](docs/DATABASE_VERSIONS.md). See also [docs/MERGE_PLAN.md](docs/MERGE_PLAN.md) and the Admin app's [security-hardening runbook](src/EInvoiceAPIAdmin/docs/security-hardening.md).

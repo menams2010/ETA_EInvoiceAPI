@@ -25,6 +25,14 @@ jobs:
             Where-Object { Test-Path (Join-Path $_.FullName 'ISCC.exe') }
           if ($found) { Write-Host "Found $($found.FullName -join ', ')" } else { choco install innosetup --no-progress -y }
 
+      - name: Admin regression tests (including config.db version migration)
+        shell: pwsh
+        run: |
+          foreach ($suite in 'DatabaseMigration', 'GraphMail', 'Security', 'VersionMigration') {
+            dotnet run --project "src/EInvoiceAPIAdmin/tests/$suite.Regression" -c Release
+            if ($LASTEXITCODE -ne 0) { throw "$suite.Regression failed" }
+          }
+
       - name: Build installer
         shell: pwsh
         run: ./installer/build-installer.ps1 -Version "1.0.${{ github.run_number }}"

@@ -11,8 +11,11 @@ namespace InvoiceWebApp.Data;
 
 public static class LegacyDatabaseMigration
 {
+    /// <param name="SourceCollections">Collections (current names) that came from the source file, as opposed to the
+    /// defaults the current schema seeds for collections the source did not have.</param>
     public sealed record Result(string Format, string DestinationPath, string BackupPath,
-        IReadOnlyDictionary<string, long> RecordCounts, bool RequiresDataProtectionKeys);
+        IReadOnlyDictionary<string, long> RecordCounts, bool RequiresDataProtectionKeys,
+        IReadOnlyCollection<string> SourceCollections);
 
     private static readonly IReadOnlyDictionary<string, Type> Models = new Dictionary<string, Type>(StringComparer.OrdinalIgnoreCase)
     {
@@ -131,10 +134,11 @@ public static class LegacyDatabaseMigration
         }
         File.Move(staged, destinationPath, overwrite: false);
         return new Result(sqlite ? "SQLite" : "LiteDB", destinationPath, backup, counts,
-            counts.GetValueOrDefault("GraphAppRegistrations") > 0 || counts.GetValueOrDefault("GraphMailConnections") > 0);
+            counts.GetValueOrDefault("GraphAppRegistrations") > 0 || counts.GetValueOrDefault("GraphMailConnections") > 0,
+            expected.Keys.ToList());
     }
 
-    private static bool IsSqlite(string path)
+    internal static bool IsSqlite(string path)
     {
         using var stream = new FileStream(path, FileMode.Open, FileAccess.Read, FileShare.ReadWrite);
         Span<byte> header = stackalloc byte[16];
@@ -207,6 +211,13 @@ public static class LegacyDatabaseMigration
     private static void Normalize(string name, BsonDocument document)
     {
         if (!Models.TryGetValue(name, out var model)) return;
+        // Version 2 (EInvoiceAPI, 2025-08) stored the client secret expiry as ClientSecretExpirationDate (a DateOnly).
+        if (name == "CompEnvs" && document.TryGetValue("ClientSecretExpirationDate", out var oldExpiry))
+        {
+            if (!document.ContainsKey("ClientSecretExpiryDate") || document["ClientSecretExpiryDate"].IsNull)
+                document["ClientSecretExpiryDate"] = LegacyDate(oldExpiry);
+            document.Remove("ClientSecretExpirationDate");
+        }
         Require(document.TryGetValue("_id", out var id) && !id.IsNull, "A record is missing its ID.");
         document["_id"] = checked((int)Integer(id!));
         Require(document["_id"].AsInt32 > 0, "IDs must be positive integers.");
@@ -229,6 +240,24 @@ public static class LegacyDatabaseMigration
             Require((document.TryGetValue("u_pass", out var pass) && pass.IsString)
                 || (document.TryGetValue("PasswordHash", out var hash) && hash.IsString && !string.IsNullOrEmpty(hash.AsString)), "An account has no password or hash.");
         }
+    }
+
+    private static BsonValue LegacyDate(BsonValue value)
+    {
+        if (value.IsNull) return BsonValue.Null;
+        if (value.IsDateTime) return value;
+        if (value.IsDocument)
+        {
+            // DateOnly serialized by an older BsonMapper as its public properties.
+            var date = value.AsDocument;
+            if (date.TryGetValue("Year", out var y) && date.TryGetValue("Month", out var m) && date.TryGetValue("Day", out var d))
+                return new BsonValue(new DateTime((int)Integer(y), (int)Integer(m), (int)Integer(d)));
+            if (date.TryGetValue("DayNumber", out var n)) return new BsonValue(DateOnly.FromDayNumber((int)Integer(n)).ToDateTime(TimeOnly.MinValue));
+            throw new InvalidOperationException("Unrecognized client secret expiry date.");
+        }
+        var text = Text(value).Trim();
+        if (text.Length == 0) return BsonValue.Null;
+        return new BsonValue(DateTime.Parse(text, CultureInfo.InvariantCulture));
     }
 
     private static string Text(BsonValue value) => Convert.ToString(value.RawValue, CultureInfo.InvariantCulture) ?? string.Empty;

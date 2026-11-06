@@ -1,0 +1,16 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!-- Migrates a config.db of every known version (Admin > Migrate Database) into a live database and checks the result. -->
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="../../EInvoiceAPIAdmin/EInvoiceAPIAdmin.csproj" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <!-- Real files: V2 written by LiteDB 5.0.21 as EInvoiceAPI did in 2025-08, and a LiteDB 4.1.4 data file. -->
+    <None Include="fixtures/*.db" CopyToOutputDirectory="PreserveNewest" />
+  </ItemGroup>
+</Project>

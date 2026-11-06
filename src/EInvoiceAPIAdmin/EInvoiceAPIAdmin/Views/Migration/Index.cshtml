@@ -1,0 +1,58 @@
+@{
+    ViewData["Title"] = "Migrate Database";
+}
+
+<h3>Migrate Database</h3>
+<p class="text-muted">
+    Bring in a <code>config.db</code> from any earlier version of EInvoiceAPI or EInvoiceAPIAdmin.
+    The version and its password are detected automatically, every record is checked, and nothing changes until you confirm.
+</p>
+
+@if (ViewBag.Error != null)
+{
+    <div class="alert alert-danger">@ViewBag.Error</div>
+}
+
+<div class="card mb-4" style="max-width: 760px;">
+    <div class="card-body">
+        <form asp-action="Analyze" method="post" enctype="multipart/form-data" autocomplete="off">
+            @Html.AntiForgeryToken()
+            <div class="mb-3">
+                <label class="form-label" for="databaseFile">Old config.db file</label>
+                <input class="form-control" type="file" id="databaseFile" name="databaseFile" accept=".db,.sqlite,.sqlite3" required />
+            </div>
+            <div class="mb-3">
+                <label class="form-label" for="sourcePassword">File password (optional)</label>
+                <input class="form-control" type="password" id="sourcePassword" name="sourcePassword" autocomplete="new-password" />
+                <div class="form-text">
+                    Leave blank: files without a password, files from versions 2 to 6, and files that use this server's
+                    password are opened automatically. Enter it for a file from another server running version 7 or later.
+                </div>
+            </div>
+            <button type="submit" class="btn btn-primary"><i class="bi bi-search"></i> Check file</button>
+        </form>
+    </div>
+</div>
+
+<h5>Supported versions</h5>
+<div class="table-responsive" style="max-width: 1000px;">
+    <table class="table table-sm table-striped align-middle">
+        <thead>
+            <tr><th>Version</th><th>Used</th><th>Format</th><th>What changes when it is migrated</th></tr>
+        </thead>
+        <tbody>
+            <tr><td>V1</td><td>2025-06 to 2025-08, EInvoiceAPI</td><td>SQLite (<code>tb_*</code> tables)</td><td>Converted to LiteDB; Admin passwords hashed; encrypted with this server's password</td></tr>
+            <tr><td>V2</td><td>2025-08, EInvoiceAPI</td><td>LiteDB 5, built-in password</td><td>Client secret expiry date converted; Admin passwords hashed; re-encrypted</td></tr>
+            <tr><td>V3</td><td>2025-09, EInvoiceAPIAdmin</td><td>LiteDB 5, built-in password, <code>tb_*</code> collections</td><td>Collections renamed; Admin passwords hashed; re-encrypted</td></tr>
+            <tr><td>V4</td><td>2026-01, EInvoiceAPIAdmin</td><td>LiteDB 5, built-in password</td><td>Admin passwords hashed; re-encrypted</td></tr>
+            <tr><td>V5, V6</td><td>2026-01 to 2026-02, EInvoiceAPIAdmin</td><td>+ alerts, SMTP, audit log</td><td>Admin passwords hashed; re-encrypted</td></tr>
+            <tr><td>V7</td><td>2026-09, EInvoiceAPIAdmin</td><td>LiteDB 5, own password, hashed passwords</td><td>Re-encrypted with this server's password</td></tr>
+            <tr><td>V8</td><td>current (ETA_EInvoiceAPI)</td><td>+ SAP endpoints, notifications API key</td><td>None (same as restoring a backup)</td></tr>
+            <tr><td>LiteDB 4</td><td>any</td><td>LiteDB 4 data file</td><td>Upgraded to LiteDB 5, then as above</td></tr>
+        </tbody>
+    </table>
+</div>
+<p class="text-muted small">
+    Whatever the version, the result is the current schema: missing collections (for example SAP endpoints or alert
+    templates) are created with their defaults, and existing ones keep their data.
+</p>

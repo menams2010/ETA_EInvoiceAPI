@@ -30,6 +30,8 @@ The old `ConnectionStrings:DefaultConnection` setting is not used by the databas
 
 ## SQLite or first-version LiteDB: separate-database migration
 
+**Recommended: Admin > Migrate Database.** It accepts a config.db of every version, detects the version and its password, checks every record with the same validation as below, and imports the data into the live database in one transaction after saving a backup. You can also download the converted file instead. See [docs/DATABASE_VERSIONS.md](../../../docs/DATABASE_VERSIONS.md) in the solution. The offline procedure below remains for migrating into a new, separate database without a running Admin site.
+
 Use offline migration rather than Maintenance restore to upgrade legacy schemas. The former live SQLite importer is disabled: it could partially overwrite a running database. Maintenance restore remains a limited current-schema operation, not a full-file restore or legacy migration.
 
 ### Supported sources and validation

@@ -1,0 +1,27 @@
+@model IReadOnlyList<(string Collection, long Records)>
+@{
+    ViewData["Title"] = "Migrate Database: done";
+    var analysis = (InvoiceWebApp.Data.ConfigDatabaseMigrator.Analysis)ViewBag.Analysis;
+}
+
+<h3>Migration complete</h3>
+<div class="alert alert-success" style="max-width: 900px;">
+    The @analysis.Version database was converted to the current version and imported. EInvoiceAPI and ETANotifications use the new data from their next request.
+</div>
+
+<table class="table table-sm table-striped" style="max-width: 500px;">
+    <thead><tr><th>Imported collection</th><th class="text-end">Records</th></tr></thead>
+    <tbody>
+        @foreach (var (collection, records) in Model)
+        {
+            <tr><td>@collection</td><td class="text-end">@records</td></tr>
+        }
+    </tbody>
+</table>
+
+<p>Backup of the previous data (encrypted with this server's password): <code>@ViewBag.BackupPath</code></p>
+<p>
+    Next: sign in again with an Admin account from the migrated file, then check
+    <a asp-controller="SapEndpoints" asp-action="Index">ETA Notifications</a> and Companies.
+</p>
+<a class="btn btn-primary" asp-controller="Home" asp-action="Login">Sign in</a>

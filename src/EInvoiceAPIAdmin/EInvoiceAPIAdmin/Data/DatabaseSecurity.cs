@@ -40,6 +40,9 @@ public sealed class DatabaseSecurity
             destination, _password, configuration["Database:Migration:SourcePassword"]);
     }
 
+    /// <summary>This server's database password (for converting old files to it).</summary>
+    internal string CurrentPassword => _password;
+
     public LiteDatabase OpenBackup(string path, string? password) => OpenFile(path, password ?? _password, true);
 
     public byte[] CreateBackup(LiteDatabase source)

@@ -57,6 +57,7 @@ if (builder.Configuration.GetValue<bool>("Database:RotateKey"))
     return;
 }
 builder.Services.AddSingleton(databaseSecurity);
+builder.Services.AddSingleton<ConfigDatabaseMigrator>();
 builder.Services.AddSingleton<LiteDatabase>(_ => databaseSecurity.Open());
 builder.Services.AddScoped<AppDbContext>(sp =>
 {

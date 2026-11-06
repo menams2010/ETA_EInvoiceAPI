@@ -1,0 +1,97 @@
+@model InvoiceWebApp.Data.ConfigDatabaseMigrator.Analysis
+@using InvoiceWebApp.Data
+@{
+    ViewData["Title"] = "Migrate Database: review";
+    var id = (string)ViewBag.UploadId;
+    var password = Model.Password switch
+    {
+        ConfigDatabaseMigrator.PasswordSource.None => "none (not encrypted)",
+        ConfigDatabaseMigrator.PasswordSource.Entered => "the password you entered",
+        ConfigDatabaseMigrator.PasswordSource.BuiltIn => "built-in password of versions 2 to 6",
+        _ => "this server's database password"
+    };
+}
+
+<h3>Migrate Database: review</h3>
+
+@if (ViewBag.Error != null)
+{
+    <div class="alert alert-danger" style="max-width: 900px;">@ViewBag.Error</div>
+}
+
+<div class="card mb-3" style="max-width: 900px;">
+    <div class="card-body">
+        <dl class="row mb-0">
+            <dt class="col-sm-3">File</dt><dd class="col-sm-9">@ViewBag.FileName</dd>
+            <dt class="col-sm-3">Detected version</dt><dd class="col-sm-9"><strong>@Model.Version</strong>: @Model.Description</dd>
+            <dt class="col-sm-3">Format</dt><dd class="col-sm-9">@Model.Format</dd>
+            <dt class="col-sm-3">Opened with</dt><dd class="col-sm-9">@password</dd>
+            @if (!string.IsNullOrEmpty(Model.DbVersionSetting))
+            {
+                <dt class="col-sm-3">DBVersion setting</dt><dd class="col-sm-9">@Model.DbVersionSetting</dd>
+            }
+        </dl>
+    </div>
+</div>
+
+<h5>Contents</h5>
+<table class="table table-sm table-striped" style="max-width: 500px;">
+    <thead><tr><th>Table / collection</th><th class="text-end">Records</th></tr></thead>
+    <tbody>
+        @foreach (var (collection, records) in Model.Collections)
+        {
+            <tr><td>@collection</td><td class="text-end">@records</td></tr>
+        }
+    </tbody>
+</table>
+
+@if (Model.Notes.Count > 0)
+{
+    <ul class="mb-3">
+        @foreach (var note in Model.Notes)
+        {
+            <li>@note</li>
+        }
+    </ul>
+}
+
+<div class="card border-warning mb-3" style="max-width: 900px;">
+    <div class="card-header bg-warning">Import into this server's database</div>
+    <div class="card-body">
+        <p>
+            The data in the tables listed above <strong>replaces</strong> the same data in the current database
+            (companies, environments, settings, Admin accounts, and so on). Data the old file does not have, such as SAP endpoints
+            and the notifications API key when migrating V1 to V7, is kept. A backup of the current database is saved
+            next to it first.
+        </p>
+        <p class="mb-2">
+            The Admin accounts become the ones in the old file, and everyone is signed out: sign in again with an account from the old file.
+        </p>
+        <form asp-action="Import" method="post" class="d-inline">
+            @Html.AntiForgeryToken()
+            <input type="hidden" name="id" value="@id" />
+            <input type="hidden" name="fileName" value="@ViewBag.FileName" />
+            <div class="form-check mb-2">
+                <input class="form-check-input" type="checkbox" id="confirm" name="confirm" value="true" />
+                <label class="form-check-label" for="confirm">I understand that this replaces the current data</label>
+            </div>
+            <button type="submit" class="btn btn-warning"><i class="bi bi-arrow-repeat"></i> Migrate and import</button>
+        </form>
+    </div>
+</div>
+
+<div class="d-flex gap-2">
+    <form asp-action="Download" method="post">
+        @Html.AntiForgeryToken()
+        <input type="hidden" name="id" value="@id" />
+        <button type="submit" class="btn btn-outline-primary"><i class="bi bi-download"></i> Download converted file instead</button>
+    </form>
+    <form asp-action="Cancel" method="post">
+        @Html.AntiForgeryToken()
+        <input type="hidden" name="id" value="@id" />
+        <button type="submit" class="btn btn-secondary">Cancel</button>
+    </form>
+</div>
+<p class="form-text mt-1">
+    The downloaded file is in the current format and encrypted with this server's database password. You can restore it later in Maintenance.
+</p>
