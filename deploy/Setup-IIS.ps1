@@ -19,12 +19,8 @@
     The pool gets Database__Path, Database__Password and ASPNETCORE_ENVIRONMENT=Production, and Modify rights on
     the config.db folder. Optionally adds an HTTPS binding with an existing certificate.
 
-    App pools that the apps used before (for example the per-app pools of earlier versions, or the pools of an
-    older manual deployment) are deleted once no application uses them any more.
-
-    -NotificationsSiteName additionally serves ETANotifications at the ROOT of another site (for example a site
-    with the public https binding that ETA already calls), from the same folder and the same app pool, so the
-    URLs registered with ETA (https://<host>/api/einvoice/...) keep working and Admin is not exposed there.
+    The per-app pools of earlier versions (<BasePath>-Admin, <BasePath>-ETANotifications) are deleted once no
+    application uses them any more.
 
     Safe to re-run: existing pools, applications and bindings are updated, not duplicated.
     Prerequisites: IIS and the ASP.NET Core 10.0 Hosting Bundle.
@@ -43,12 +39,9 @@
     Only set Database__Password (from -DatabasePassword / ETA_DB_PASSWORD) on the app pools that exist, then start
     them; then exit. Used after the database password was changed, so every app (installed now or earlier) gets it.
 
-.PARAMETER NotificationsSiteName
-    Optional existing IIS site whose root application is pointed at ETANotifications (folder and app pool).
-
 .PARAMETER Remove
     Remove the selected IIS applications, and the app pool once no application uses it; then exit. Files,
-    config.db, the notification logs, any HTTPS binding and the -NotificationsSiteName site are left in place.
+    config.db, the notification logs and any HTTPS binding are left in place.
     Used by the uninstaller.
 
 .EXAMPLE
@@ -57,8 +50,6 @@
     .\Setup-IIS.ps1 -Arch x86 -SiteName "ETA" -BasePath EInvoiceAPI -CertificateThumbprint 3A1F...C9
 .EXAMPLE
     .\Setup-IIS.ps1 -Apps EInvoiceAPI,Admin                  # without ETANotifications
-.EXAMPLE
-    .\Setup-IIS.ps1 -NotificationsSiteName ETANotif          # ETA keeps calling https://<ETANotif host>/api/einvoice/...
 #>
 #Requires -RunAsAdministrator
 [CmdletBinding()]
@@ -92,9 +83,6 @@ param(
     [int] $HttpsPort = 443,
     # Optional host name for the https binding (uses SNI when set).
     [string] $HttpsHostName = '',
-
-    # Optional: also serve ETANotifications at the root of this existing site (same folder and app pool).
-    [string] $NotificationsSiteName = '',
 
     [switch] $StopAppPools,
 
@@ -232,13 +220,6 @@ if ($plainPassword.Length -lt 32) { throw 'The database password must be at leas
 $sm = [Microsoft.Web.Administration.ServerManager]::new()
 $site = $sm.Sites[$SiteName]
 if ($null -eq $site) { throw "IIS site '$SiteName' not found." }
-$notificationsSite = $null
-if ($NotificationsSiteName) {
-    if ($selected -notcontains 'ETANotifications') { throw '-NotificationsSiteName needs the ETANotifications app.' }
-    if ($NotificationsSiteName -eq $SiteName) { throw '-NotificationsSiteName must be a different site than -SiteName.' }
-    $notificationsSite = $sm.Sites[$NotificationsSiteName]
-    if ($null -eq $notificationsSite) { throw "IIS site '$NotificationsSiteName' not found." }
-}
 
 $pool = $sm.ApplicationPools[$PoolName]
 if ($null -eq $pool) { $pool = $sm.ApplicationPools.Add($PoolName) }
@@ -247,10 +228,6 @@ $pool.Enable32BitAppOnWin64 = ($Arch -eq 'x86')
 $pool.StartMode = [Microsoft.Web.Administration.StartMode]::AlwaysRunning
 $pool.ProcessModel.IdentityType = [Microsoft.Web.Administration.ProcessModelIdentityType]::ApplicationPoolIdentity
 
-# Pools the apps used before this run (earlier versions or a manual deployment); deleted below once unused.
-$previousPools = [System.Collections.Generic.List[string]]::new()
-$previousPools.AddRange([string[]]$LegacyPools)
-
 foreach ($name in $selected) {
     $def = $definitions[$name]
     $physicalPath = Join-Path $WebRoot $name
@@ -258,17 +235,10 @@ foreach ($name in $selected) {
 
     $app = $site.Applications[$def.Url]
     if ($null -eq $app) { $app = $site.Applications.Add($def.Url, $physicalPath) }
-    else { $previousPools.Add($app.ApplicationPoolName); $app.VirtualDirectories['/'].PhysicalPath = $physicalPath }
+    else { $app.VirtualDirectories['/'].PhysicalPath = $physicalPath }
     $app.ApplicationPoolName = $PoolName
 }
 
-if ($null -ne $notificationsSite) {
-    $root = $notificationsSite.Applications['/']
-    $previousPools.Add($root.ApplicationPoolName)
-    $root.VirtualDirectories['/'].PhysicalPath = Join-Path $WebRoot 'ETANotifications'
-    $root.ApplicationPoolName = $PoolName
-    Write-Host ("Site '{0}' root -> {1} (pool {2})" -f $NotificationsSiteName, (Join-Path $WebRoot 'ETANotifications'), $PoolName) -ForegroundColor Green
-}
 
 if ($CertificateThumbprint) {
     $thumb = ($CertificateThumbprint -replace '[^0-9A-Fa-f]', '').ToUpperInvariant()
@@ -286,7 +256,7 @@ if ($CertificateThumbprint) {
 $sm.CommitChanges()
 
 $sm = [Microsoft.Web.Administration.ServerManager]::new()
-if (Remove-UnusedPools $sm @($previousPools | Where-Object { $_ -and $_ -ne $PoolName })) { $sm.CommitChanges() }
+if (Remove-UnusedPools $sm $LegacyPools) { $sm.CommitChanges() }
 
 # Environment variables on the pool (applicationHost.config, encrypted at rest by IIS only if configured;
 # the file is readable by Administrators and the IIS system accounts).

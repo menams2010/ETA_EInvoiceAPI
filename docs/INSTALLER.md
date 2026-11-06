@@ -19,7 +19,7 @@ A single setup program that installs EInvoiceAPI, the Admin site and ETANotifica
 |---|---|
 | Select components | EInvoiceAPI, Admin, ETANotifications (any combination) |
 | Platform | **64-bit** (default) or **32-bit**. Choose 32-bit on servers that sign with the USB token, because its driver is 32-bit. |
-| IIS | Site, picked from the server's IIS sites, and the URL path (default `EInvoiceAPI`). The apps go to `/<path>`, `/<path>/Admin` and `/<path>/ETANotifications`, all in one app pool named after the path. Optionally, **also serve ETA Notifications at the root of another site**, such as an existing `ETANotif` site with the public HTTPS binding ETA already calls (`/NOTIFSITE=`), so ETA's URLs don't change. |
+| IIS | Site, picked from the server's IIS sites, and the URL path (default `EInvoiceAPI`). The apps go to `/<path>`, `/<path>/Admin` and `/<path>/ETANotifications`, all in one app pool named after the path. |
 | Folders | Web apps folder (default `C:\inetpub\EInvoiceAPI`), database folder (`C:\ETA\Data`), notification logs folder (`C:\EInvoice`) |
 | Database | **New database:** generate a strong password, or **choose your own** (32 or more characters, typed twice). **Existing database:** it's kept and upgraded. Its current password is read from the existing IIS app pools when it can be, otherwise you enter it, and it's checked before installing. Tick **Change the database password** to replace it with a password of your choice (see below). |
 | Admin account | First account for the Admin site. Only shown when the database is new. |
@@ -33,7 +33,7 @@ A single setup program that installs EInvoiceAPI, the Admin site and ETANotifica
 2. **Hosting Bundle.** If the ASP.NET Core 10 Hosting Bundle is missing, setup downloads it from Microsoft, installs it and restarts IIS. The server needs internet access for this.
 3. **Database.** Creates or upgrades `config.db`, using the Admin app's own code, creates the first Admin account, and saves the SAP endpoints and the ETA Notifications API key.
 4. **Files.** Stops the app pools and copies the apps for the chosen platform.
-5. **IIS configuration.** Runs `deploy\Setup-IIS.ps1`. This creates or updates **one** app pool, `EInvoiceAPI` (No Managed Code, ApplicationPoolIdentity, 32-bit when x86), shared by the nested applications (they run out-of-process), and points the optional notifications site's root at ETANotifications. Pools the apps used before (earlier per-app pools, or old pools such as `EInvoiceAppPool`, `EInvoiceAPI_Admin`, `ETANotif`) are deleted once nothing uses them. It also sets `Database__Path`, `Database__Password` and the notification folder as app pool environment variables, grants folder permissions, adds the optional HTTPS binding, and starts the pool.
+5. **IIS configuration.** Runs `deploy\Setup-IIS.ps1`. This creates or updates **one** app pool, `EInvoiceAPI` (No Managed Code, ApplicationPoolIdentity, 32-bit when x86), shared by the nested applications (they run out-of-process). The per-app pools of earlier versions are deleted once nothing uses them. It also sets `Database__Path`, `Database__Password` and the notification folder as app pool environment variables, grants folder permissions, adds the optional HTTPS binding, and starts the pool.
 
 **Running setup again** upgrades in place and remembers the previous choices.
 
@@ -44,7 +44,7 @@ A single setup program that installs EInvoiceAPI, the Admin site and ETANotifica
 
 The previous file is kept next to `config.db` as `config.before-password-change-<date-time>.db`. It still opens with the **old** password, so delete it once everything works. If re-encrypting fails, nothing changes: the database keeps its current password and the pools are restarted.
 
-**Uninstalling** (Windows *Apps & features*, or `unins000.exe` in the apps folder) removes the IIS applications, the app pool and the app files. It **keeps** `config.db`, the notification logs and any HTTPS binding. If another site's root still uses the pool (the notifications site option), the pool and that site are kept: point the site elsewhere or delete it.
+**Uninstalling** (Windows *Apps & features*, or `unins000.exe` in the apps folder) removes the IIS applications, the app pool and the app files. It **keeps** `config.db`, the notification logs and any HTTPS binding.
 
 ## Unattended install
 
@@ -55,7 +55,7 @@ EInvoiceAPI-Setup-1.0.0.exe /VERYSILENT /SUPPRESSMSGBOXES /NORESTART /LOG="C:\Te
   /COMPONENTS="api,admin,notifications" /ARCH=x86 /SITE="Default Web Site" /BASEPATH=EInvoiceAPI `
   /DIR="C:\inetpub\EInvoiceAPI" /DATADIR="C:\ETA\Data" /NOTIFDIR="C:\EInvoice" `
   /ADMINUSER=admin /ADMINPASSWORD=... /SAPPRODURL=https://... /SAPPRODUSER=... /SAPPRODPASSWORD=... /NOTIFAPIKEY=... `
-  /CERT=<thumbprint> /HTTPSPORT=443 /NOTIFSITE=ETANotif /INSTALLIIS=yes
+  /CERT=<thumbprint> /HTTPSPORT=443 /INSTALLIIS=yes
 ```
 
 How the database password is chosen:

@@ -11,7 +11,7 @@
 ;     /SITE="Default Web Site" /BASEPATH=EInvoiceAPI /DIR="C:\inetpub\EInvoiceAPI" /DATADIR="C:\ETA\Data"
 ;     /NOTIFDIR="C:\EInvoice" /DBPASSWORD=... /ADMINUSER=... /ADMINPASSWORD=...
 ;     /SAPPRODURL=... /SAPPRODUSER=... /SAPPRODPASSWORD=... /SAPPRODTIMEOUT=3000 (and /SAPDEV...)
-;     /CERT=<thumbprint> /HTTPSPORT=443 /HTTPSHOST=<name> /NOTIFSITE="ETANotif" /INSTALLIIS=yes /LOG="setup.log"
+;     /CERT=<thumbprint> /HTTPSPORT=443 /HTTPSHOST=<name> /INSTALLIIS=yes /LOG="setup.log"
 
 #define AppName "ETA E-Invoice API"
 #ifndef AppVersion
@@ -86,7 +86,6 @@ Filename: "{code:GetAdminUrl}"; Description: "Open the Admin site"; Flags: posti
 const
   DefaultSite = 'Default Web Site';
   DefaultBasePath = 'EInvoiceAPI';
-  NoNotifSite = '(none)';
   AllApps = 'EInvoiceAPI,Admin,ETANotifications';
   DefaultDataDir = 'C:\ETA\Data';
   DefaultNotifDir = 'C:\EInvoice';
@@ -96,7 +95,7 @@ const
 var
   ArchPage: TInputOptionWizardPage;
   IisPage: TWizardPage;
-  SiteCombo, NotifSiteCombo: TNewComboBox;
+  SiteCombo: TNewComboBox;
   BasePathEdit: TNewEdit;
   FolderPage: TInputDirWizardPage;
   DbPage: TWizardPage;
@@ -212,13 +211,6 @@ end;
 function GetSiteName(Value: String): String;
 begin
   Result := Trim(SiteCombo.Text);
-end;
-
-// Optional site whose root also serves ETANotifications ('' = none).
-function GetNotifSiteName: String;
-begin
-  Result := Trim(NotifSiteCombo.Text);
-  if (CompareText(Result, NoNotifSite) = 0) or not WizardIsComponentSelected('notifications') then Result := '';
 end;
 
 function GetBasePath(Value: String): String;
@@ -579,21 +571,10 @@ begin
       if RunHelper('ListSites', '', Lines) then
         for I := 0 to GetArrayLength(Lines) - 1 do
           if CompareText(Trim(Lines[I]), GetSiteName('')) = 0 then Found := True;
-      if not Found then Result := 'IIS has no site named "' + GetSiteName('') + '".'
-      else if GetNotifSiteName <> '' then
-      begin
-        Found := False;
-        for I := 0 to GetArrayLength(Lines) - 1 do
-          if CompareText(Trim(Lines[I]), GetNotifSiteName) = 0 then Found := True;
-        if not Found then Result := 'IIS has no site named "' + GetNotifSiteName + '".'
-        else if CompareText(GetNotifSiteName, GetSiteName('')) = 0 then
-          Result := 'Choose a different site for ETA Notifications, or (none).';
-      end;
+      if not Found then Result := 'IIS has no site named "' + GetSiteName('') + '".';
     end
     else if CompareText(GetSiteName(''), DefaultSite) <> 0 then
-      Result := 'IIS is not installed yet, so only "' + DefaultSite + '" (created with IIS) can be used.'
-    else if GetNotifSiteName <> '' then
-      Result := 'IIS is not installed yet, so there is no other site for ETA Notifications. Choose (none).';
+      Result := 'IIS is not installed yet, so only "' + DefaultSite + '" (created with IIS) can be used.';
   end
   else if PageID = FolderPage.ID then
   begin
@@ -755,17 +736,7 @@ begin
   NewLabel(IisPage, 'URL path:', ScaleY(56));
   BasePathEdit := NewEdit(IisPage, Param('BASEPATH', GetPreviousData('BasePath', DefaultBasePath)), ScaleY(74));
   NewLabel(IisPage, 'The apps will be at http(s)://<server>/<path>, /<path>/Admin and /<path>/ETANotifications.', ScaleY(104));
-  NewLabel(IisPage, 'Also serve ETA Notifications at the root of this site (optional):', ScaleY(136));
-  NotifSiteCombo := TNewComboBox.Create(IisPage);
-  NotifSiteCombo.Parent := IisPage.Surface;
-  NotifSiteCombo.Style := csDropDown;
-  NotifSiteCombo.Top := ScaleY(154);
-  NotifSiteCombo.Width := IisPage.SurfaceWidth;
-  NotifSiteCombo.Items.Add(NoNotifSite);
-  for I := 0 to SiteCombo.Items.Count - 1 do NotifSiteCombo.Items.Add(SiteCombo.Items[I]);
-  NotifSiteCombo.Text := Param('NOTIFSITE', GetPreviousData('NotifSite', NoNotifSite));
-  NewLabel(IisPage, 'For a site ETA already calls (for example one with your public HTTPS binding): its URLs keep working,'
-    + ' and Admin is not published there. All apps share one app pool named after the URL path.', ScaleY(184));
+  NewLabel(IisPage, 'All apps share one app pool named after the URL path.', ScaleY(136));
 
   { 3. Folders }
   FolderPage := CreateInputDirPage(IisPage.ID, 'Folders', 'Where should the apps and their data go?',
@@ -894,7 +865,6 @@ begin
   SetPreviousData(PreviousDataKey, 'Arch', GetArch(''));
   SetPreviousData(PreviousDataKey, 'SiteName', GetSiteName(''));
   SetPreviousData(PreviousDataKey, 'BasePath', GetBasePath(''));
-  SetPreviousData(PreviousDataKey, 'NotifSite', Trim(NotifSiteCombo.Text));
   SetPreviousData(PreviousDataKey, 'DataDir', GetDataDir);
   SetPreviousData(PreviousDataKey, 'NotifDir', GetNotifDir);
   SetPreviousData(PreviousDataKey, 'HttpsPort', Trim(HttpsPortEdit.Text));
@@ -958,7 +928,6 @@ begin
   S := S + 'Platform:' + NewLine + Space + GetArch('') + NewLine + NewLine;
   S := S + 'IIS:' + NewLine + Space + 'Site: ' + GetSiteName('') + NewLine + Space + 'URL: http(s)://<server>/' + GetBasePath('') + NewLine
     + Space + 'App pool: ' + GetBasePath('') + ' (shared by all apps)' + NewLine;
-  if GetNotifSiteName <> '' then S := S + Space + 'ETA Notifications also at the root of site: ' + GetNotifSiteName + NewLine;
   S := S + NewLine;
   S := S + 'Folders:' + NewLine + Space + 'Apps: ' + GetWebRoot + NewLine + Space + 'Database: ' + GetDatabasePath('') + NewLine;
   if WizardIsComponentSelected('notifications') then S := S + Space + 'Notification logs: ' + GetNotifDir + NewLine;
@@ -1096,7 +1065,6 @@ begin
     WizardForm.StatusLabel.Caption := 'Configuring IIS...';
     Args := '-WebRoot ' + AddQuotes(GetWebRoot) + ' -Arch ' + GetArch('') + ' -DatabasePath ' + AddQuotes(GetDatabasePath(''))
       + ' -NotificationsDataFolder ' + AddQuotes(GetNotifDir);
-    if GetNotifSiteName <> '' then Args := Args + ' -NotificationsSiteName ' + AddQuotes(GetNotifSiteName);
     if GetCertThumbprint <> '' then
     begin
       Args := Args + ' -CertificateThumbprint ' + GetCertThumbprint + ' -HttpsPort ' + Trim(HttpsPortEdit.Text);
