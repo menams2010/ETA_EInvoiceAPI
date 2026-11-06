@@ -34,6 +34,7 @@ Goal: one solution where **EInvoiceAPI** (signing and submission API) uses the *
 2. **EInvoiceAPI `Startup`:** calls `TokenManager.Configure(Configuration)`.
 3. **EInvoiceAPIAdmin `DatabaseSecurity.Open()`:** the live connection is now **shared** instead of exclusive, so the API can use the file while Admin runs. Offline operations (backup copy, key rotation, legacy migration) still use exclusive access.
 4. **LiteDB 5.0.17 in both apps.** Both apps must run the same engine version on the shared file. 5.0.21 breaks Admin's key rotation (`Rebuild` fails with "Invalid password"; caught by `Security.Regression`), so the API moved down rather than Admin up.
+5. **Shared mode across IIS app pools** ([`src/Shared/LiteDbSharedMutex.cs`](../src/Shared/LiteDbSharedMutex.cs), linked into all three apps). LiteDB coordinates shared access with a named mutex, `Global\<sha1(path)>.Mutex`. On .NET (Core) it creates that mutex with default security, so only the app pool that opened `config.db` first could use it; the others failed with "Access to the path 'Global\…Mutex' is denied". Each app now creates the mutex itself before opening the file, with an ACL every app pool can open. This was found by the installer's end-to-end test on IIS.
 
 ### Verification
 
