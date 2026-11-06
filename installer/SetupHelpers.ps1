@@ -21,6 +21,12 @@ param(
 
 $ErrorActionPreference = 'Stop'
 
+# Errors go to <Out>.err so the setup log can show them (never write passwords in error messages).
+trap {
+    if ($Out) { ($_ | Out-String) + $_.ScriptStackTrace | Set-Content -Path "$Out.err" -Encoding UTF8 }
+    exit 1
+}
+
 function Write-Result([string[]] $lines) {
     if ($Out) { Set-Content -Path $Out -Value $lines -Encoding UTF8 }
 }

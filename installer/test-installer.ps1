@@ -27,6 +27,11 @@ function Invoke-Setup([string] $name, [string[]] $arguments) {
     Write-Host "$name exit code: $($p.ExitCode)"
     return $p.ExitCode
 }
+# The WebAdministration module (IIS: drive) only works in Windows PowerShell, so IIS queries go through powershell.exe.
+function Invoke-Iis([string] $command) {
+    $output = & "$env:windir\System32\WindowsPowerShell\v1.0\powershell.exe" -NoProfile -NonInteractive -Command "Import-Module WebAdministration; $command"
+    return "$output".Trim()
+}
 function Get-Url([string] $url, [hashtable] $extra = @{}) {
     Invoke-WebRequest -Uri $url -SkipCertificateCheck -SkipHttpErrorCheck -MaximumRedirection 0 -TimeoutSec 60 @extra
 }
@@ -67,9 +72,8 @@ try {
         "/CERT=$($cert.Thumbprint)")
     Check ($code -eq 0) 'fresh install exits with 0'
 
-    Import-Module WebAdministration
-    Check ((Get-ItemProperty 'IIS:\AppPools\EInvoiceAPI' -Name enable32BitAppOnWin64).Value -eq $false) 'x64 install: 64-bit app pool'
-    Check ($null -ne (Get-WebBinding -Name 'Default Web Site' -Protocol https -Port 443)) 'HTTPS binding added'
+    Check ((Invoke-Iis "(Get-ItemProperty 'IIS:\AppPools\EInvoiceAPI' -Name enable32BitAppOnWin64).Value") -eq 'False') 'x64 install: 64-bit app pool'
+    Check ((Invoke-Iis "@(Get-WebBinding -Name 'Default Web Site' -Protocol https -Port 443).Count") -eq '1') 'HTTPS binding added'
     Check (Test-Path 'C:\ETA\Data\config.db') 'config.db created'
 
     $r = Get-Url "$api/swagger/v1/swagger.json"
@@ -106,7 +110,7 @@ try {
     # === 2. upgrade to x86, password reused from IIS ======================================================
     $code = Invoke-Setup 'upgrade' @('/ARCH=x86')
     Check ($code -eq 0) 'upgrade (x86, no password given) exits with 0'
-    Check ((Get-ItemProperty 'IIS:\AppPools\EInvoiceAPI' -Name enable32BitAppOnWin64).Value -eq $true) 'x86 upgrade: 32-bit app pool'
+    Check ((Invoke-Iis "(Get-ItemProperty 'IIS:\AppPools\EInvoiceAPI' -Name enable32BitAppOnWin64).Value") -eq 'True') 'x86 upgrade: 32-bit app pool'
     $r = Get-Url "$notifications/ping" @{ Method = 'Put'; Headers = $apiKey; ContentType = 'application/json'; Body = '{"Rin":"456"}' }
     Check ($r.StatusCode -eq 200) "ETANotifications works after upgrade ($($r.StatusCode))"
     $r = Get-Url "$api/swagger/v1/swagger.json"
@@ -118,8 +122,8 @@ try {
     $p = Start-Process $uninstaller -ArgumentList '/VERYSILENT', '/SUPPRESSMSGBOXES', '/NORESTART', "/LOG=`"$(Join-Path $LogDir 'uninstall.log')`"" -Wait -PassThru
     Check ($p.ExitCode -eq 0) 'uninstall exits with 0'
     Start-Sleep -Seconds 5
-    Check ($null -eq (Get-WebApplication -Site 'Default Web Site' -Name 'EInvoiceAPI')) 'uninstall removed the IIS applications'
-    Check (-not (Test-Path 'IIS:\AppPools\EInvoiceAPI-Admin')) 'uninstall removed the app pools'
+    Check ((Invoke-Iis "@(Get-WebApplication -Site 'Default Web Site' -Name 'EInvoiceAPI').Count") -eq '0') 'uninstall removed the IIS applications'
+    Check ((Invoke-Iis "Test-Path 'IIS:\AppPools\EInvoiceAPI-Admin'") -eq 'False') 'uninstall removed the app pools'
     Check (Test-Path 'C:\ETA\Data\config.db') 'uninstall kept config.db'
 }
 finally {

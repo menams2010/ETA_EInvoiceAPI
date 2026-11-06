@@ -163,7 +163,9 @@ end;
 
 function HostingBundleInstalled: Boolean;
 begin
-  Result := FileExists(ExpandConstant('{sys}\inetsrv\aspnetcorev2.dll'))
+  // The Hosting Bundle puts the ASP.NET Core Module V2 under Program Files\IIS and registers it in IIS Extensions.
+  Result := (FileExists(ExpandConstant('{commonpf64}\IIS\Asp.Net Core Module\V2\aspnetcorev2.dll'))
+      or RegKeyExists(HKLM, 'SOFTWARE\Microsoft\IIS Extensions\IIS AspNetCore Module V2'))
     and DirMatches(ExpandConstant('{commonpf64}\dotnet\shared\Microsoft.AspNetCore.App\10.*'));
   if Result and IsArch('x86') then
     Result := DirMatches(ExpandConstant('{commonpf32}\dotnet\shared\Microsoft.AspNetCore.App\10.*'));
@@ -265,6 +267,7 @@ begin
   end;
   OutFile := ExpandConstant('{tmp}\helper-out.txt');
   DeleteFile(OutFile);
+  DeleteFile(OutFile + '.err');
   SetArrayLength(Lines, 0);
   Result := Exec(PowerShellExe, '-NoProfile -NonInteractive -ExecutionPolicy Bypass -File '
       + AddQuotes(ExpandConstant('{tmp}\SetupHelpers.ps1')) + ' -Action ' + Action + ' -Out ' + AddQuotes(OutFile) + ' ' + ExtraArgs,
@@ -275,6 +278,11 @@ begin
     DeleteFile(OutFile); // may contain a password
   end;
   Log('Helper ' + Action + ': ' + IntToStr(ResultCode));
+  if FileExists(OutFile + '.err') then
+  begin
+    LogFile(OutFile + '.err');
+    DeleteFile(OutFile + '.err');
+  end;
 end;
 
 function FirstLine(const Lines: TArrayOfString): String;
