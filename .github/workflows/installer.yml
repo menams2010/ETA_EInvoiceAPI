@@ -45,3 +45,12 @@ jobs:
         with:
           name: setup-logs
           path: test-logs/
+
+      - name: Show setup logs (on failure)
+        if: failure()
+        shell: pwsh
+        run: |
+          Get-ChildItem test-logs -File -ErrorAction SilentlyContinue | Where-Object Extension -in '.log', '.jsonl' | ForEach-Object {
+            Write-Host "===== $($_.Name) ====="
+            Get-Content $_.FullName | Where-Object { $_ -notmatch '(Dest filename|Time stamp|Installing the file|Successfully installed the file|Dest file exists|Skipping due to)' }
+          }
