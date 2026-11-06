@@ -282,7 +282,7 @@ begin
   if GetArrayLength(Lines) > 0 then Result := Trim(Lines[0]) else Result := '';
 end;
 
-{ Unpacks ETA.SetupTool (shipped as SetupTool.zip) into {tmp}\SetupTool once. }
+// Unpacks ETA.SetupTool (shipped as SetupTool.zip) into {tmp}\SetupTool once.
 function SetupToolExe: String;
 var
   Lines: TArrayOfString;
@@ -339,7 +339,7 @@ begin
   LogFile(LogPath);
 end;
 
-{ Runs deploy\Setup-IIS.ps1 (extracted to {app}\deploy) with the given extra arguments. }
+// Runs deploy\Setup-IIS.ps1 (extracted to {app}\deploy) with the given extra arguments.
 function RunSetupIis(const ExtraArgs: String; PassPassword: Boolean): Boolean;
 var
   ResultCode: Integer;
@@ -793,7 +793,7 @@ var
   Error: String;
 begin
   if CurPageID = FolderPage.ID then
-    WizardForm.DirEdit.Text := GetWebRoot; { {app} = web applications folder }
+    WizardForm.DirEdit.Text := GetWebRoot; // {app} = web applications folder
   if CurPageID = DbPage.ID then RefreshDbState; { silent installs may not run CurPageChanged }
   if CurPageID = HttpsPage.ID then LoadCertificates;
   Error := ValidatePage(CurPageID);
