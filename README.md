@@ -17,9 +17,47 @@ All projects target **.NET 10** (LTS, supported until November 2028). The target
 
 The full commit history of each original repository is preserved. Each project's original `.sln` is still in its folder if you want to open it on its own.
 
+## Publishing
+
+Each web app has two Folder publish profiles in `Properties/PublishProfiles/`:
+
+| Profile | Runtime | Use for |
+|---|---|---|
+| `FolderProfile-x64` (default) | `win-x64` | Normal 64-bit IIS app pools |
+| `FolderProfile-x86` | `win-x86` | Servers that sign with the USB token. The token driver `eps2003csp11.dll` is 32-bit and can't be loaded by a 64-bit process. |
+
+Both are Release, framework-dependent builds. They write to `publish\<x64|x86>\<App>\` at the repository root; that folder isn't tracked by git. Copy each app's folder to its IIS site.
+
+- **Visual Studio:** right-click a project, choose **Publish**, then pick `FolderProfile-x64` or `FolderProfile-x86`.
+- **PowerShell**, from the repository root. Publish all three apps as x64:
+
+  ```powershell
+  .\publish.ps1
+  ```
+
+  Publish all three as x86:
+
+  ```powershell
+  .\publish.ps1 -Arch x86
+  ```
+
+  Publish one app:
+
+  ```powershell
+  .\publish.ps1 -Project EInvoiceAPI -Arch x86
+  ```
+
+- **dotnet CLI**, for one project:
+
+  ```powershell
+  dotnet publish src\EInvoiceAPI\EInvoiceAPI\EInvoiceAPI.csproj -c Release -p:PublishProfile=FolderProfile-x64
+  ```
+
+**Using the USB token.** EInvoiceAPI signs with the token, and EInvoiceAPIAdmin's Company screen tests it. On a server that uses the token, publish those apps with `FolderProfile-x86` and set the IIS app pool's **Enable 32-Bit Applications** to **True**. EInvoiceAPI ships `eps2003csp11.dll` in its publish folder. EInvoiceAPIAdmin loads it by name, so the driver must be installed on the server.
+
 ## Hosting on IIS
 
-All three apps are now ASP.NET Core apps. Each server needs the **ASP.NET Core 10.0 Hosting Bundle**, and each app pool should use **No Managed Code**. `dotnet publish` generates the `web.config` for the ASP.NET Core Module.
+All three apps are ASP.NET Core apps. Each server needs the **ASP.NET Core 10.0 Hosting Bundle**, which installs both the 32-bit and 64-bit runtimes. Each app pool should use **No Managed Code**. Publishing generates the `web.config` for in-process hosting.
 
 ## Shared configuration database
 
